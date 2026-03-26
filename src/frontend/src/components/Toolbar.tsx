@@ -7,12 +7,17 @@ import {
 } from "@/components/ui/select";
 import {
   CheckSquare,
+  Download,
   MousePointer2,
   Move,
   Printer,
+  Redo2,
   RotateCw,
   Ruler,
   Trash2,
+  Type,
+  Undo2,
+  Upload,
 } from "lucide-react";
 import type { ScaleOption, ToolMode, ViewMode } from "../types/yard";
 
@@ -29,6 +34,12 @@ interface ToolbarProps {
   onSelectAll: () => void;
   selectedCount: number;
   totalCount: number;
+  onSaveFile: () => void;
+  onLoadFile: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const TOOLS: {
@@ -40,6 +51,7 @@ const TOOLS: {
   { id: "move", label: "Move", Icon: Move },
   { id: "rotate", label: "Rotate", Icon: RotateCw },
   { id: "measure", label: "Measure", Icon: Ruler },
+  { id: "text", label: "Text", Icon: Type },
 ];
 
 function handlePrintToPDF() {
@@ -59,6 +71,12 @@ export function Toolbar({
   onSelectAll,
   selectedCount,
   totalCount,
+  onSaveFile,
+  onLoadFile,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
 }: ToolbarProps) {
   return (
     <div
@@ -79,12 +97,47 @@ export function Toolbar({
                 : "text-white/60 hover:text-white hover:bg-white/10"
             }`}
             style={activeTool === id ? { backgroundColor: "#1E7ACB" } : {}}
+            title={id === "text" ? "Text annotation (T)" : label}
             data-ocid={`toolbar.${id}.button`}
           >
             <Icon className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{label}</span>
           </button>
         ))}
+
+        {/* Undo / Redo */}
+        <div className="flex items-center gap-0.5 ml-1 border-l border-white/20 pl-1">
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+            className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+              canUndo
+                ? "text-white/70 hover:text-white hover:bg-white/10"
+                : "text-white/20 cursor-not-allowed"
+            }`}
+            data-ocid="toolbar.undo.button"
+          >
+            <Undo2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Undo</span>
+          </button>
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+            className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+              canRedo
+                ? "text-white/70 hover:text-white hover:bg-white/10"
+                : "text-white/20 cursor-not-allowed"
+            }`}
+            data-ocid="toolbar.redo.button"
+          >
+            <Redo2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Redo</span>
+          </button>
+        </div>
 
         {/* Select All */}
         <button
@@ -131,6 +184,30 @@ export function Toolbar({
         >
           <Printer className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Print to PDF</span>
+        </button>
+
+        {/* Save File */}
+        <button
+          type="button"
+          onClick={onSaveFile}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-white/60 hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors ml-1"
+          title="Save layout to file"
+          data-ocid="toolbar.save_file.button"
+        >
+          <Download className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Save File</span>
+        </button>
+
+        {/* Load File */}
+        <button
+          type="button"
+          onClick={onLoadFile}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium text-white/60 hover:text-yellow-400 hover:bg-yellow-400/10 transition-colors ml-1"
+          title="Load layout from file"
+          data-ocid="toolbar.load_file.button"
+        >
+          <Upload className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Load File</span>
         </button>
       </div>
 

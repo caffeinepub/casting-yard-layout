@@ -6,13 +6,41 @@ import type { LibraryItem } from "../types/yard";
 
 const DEFAULT_COLOR = "#4f86c6";
 
+const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
+  {
+    name: "Gantry Crane",
+    elementType: "custom",
+    width: 5,
+    height: 30,
+    color: "#888888",
+    defaultStatus: "planned",
+    imageUrl:
+      "/assets/uploads/istockphoto-464854298-1024x1024-019d2b15-f4f1-70fa-aca4-80e5b8dbc76f-1.png",
+  },
+  {
+    name: "Crane 2",
+    elementType: "custom",
+    width: 5,
+    height: 30,
+    color: "#888888",
+    defaultStatus: "planned",
+    imageUrl:
+      "/assets/uploads/istockphoto-464854298-1024x1024-019d2b1a-b670-751f-ae4d-2fb3b2a65a43-2.png",
+  },
+];
+
 interface LeftSidebarProps {
   onAddElement: (item: LibraryItem) => void;
+  libraryItems: LibraryItem[];
+  onLibraryChange: (items: LibraryItem[]) => void;
 }
 
-export function LeftSidebar({ onAddElement }: LeftSidebarProps) {
+export function LeftSidebar({
+  onAddElement,
+  libraryItems,
+  onLibraryChange,
+}: LeftSidebarProps) {
   const [search, setSearch] = useState("");
-  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
 
   // Add element form
   const [showForm, setShowForm] = useState(false);
@@ -51,13 +79,13 @@ export function LeftSidebar({ onAddElement }: LeftSidebarProps) {
       color: formColor,
       defaultStatus: "planned",
     };
-    setLibraryItems((prev) => [...prev, newItem]);
+    onLibraryChange([...libraryItems, newItem]);
     setShowForm(false);
   };
 
   const handleRemoveLibraryItem = (idx: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    setLibraryItems((prev) => prev.filter((_, i) => i !== idx));
+    onLibraryChange(libraryItems.filter((_, i) => i !== idx));
   };
 
   const visibleItems = libraryItems.filter((i) =>
@@ -122,6 +150,45 @@ export function LeftSidebar({ onAddElement }: LeftSidebarProps) {
               title="Remove from library"
             >
               <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Permanent Equipment Section */}
+      <div className="border-t border-border">
+        <div className="px-3 py-1.5 flex items-center gap-1">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1">
+            Equipment
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        {EQUIPMENT_ITEMS.map((item, idx) => (
+          <div
+            key={item.name}
+            className="group flex items-center gap-1 mx-2 mb-1 rounded hover:bg-muted/60 transition-colors"
+          >
+            <button
+              type="button"
+              draggable
+              onDragStart={(e) => handleDragStart(e, item)}
+              onClick={() => onAddElement(item)}
+              className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
+              title="Click or drag to place on canvas"
+              data-ocid={`sidebar.equipment.item.${idx + 1}`}
+            >
+              <img
+                src={item.imageUrl}
+                alt={item.name}
+                className="w-6 h-6 object-cover rounded flex-shrink-0 border border-border"
+              />
+              <div className="min-w-0 text-left">
+                <div className="text-xs font-medium truncate">{item.name}</div>
+                <div className="text-[10px] text-muted-foreground">
+                  L:{item.height}m × W:{item.width}m
+                </div>
+              </div>
             </button>
           </div>
         ))}

@@ -11,6 +11,7 @@ import { useSaveProject } from "./hooks/useQueries";
 import type {
   LibraryItem,
   ScaleOption,
+  TextLabel,
   ToolMode,
   ViewMode,
   YardElement,
@@ -23,43 +24,144 @@ function genId(): bigint {
   return nextId;
 }
 
+const PLACEMENT_SPACING = 2; // meters gap between auto-placed elements
+const PLACEMENT_START_X = 5;
+const PLACEMENT_START_Y = 5;
+const MAX_HISTORY = 50;
+
+interface HistorySnapshot {
+  elements: YardElement[];
+  textLabels: TextLabel[];
+}
+
 export default function App() {
   const [elements, setElements] = useState<YardElement[]>([]);
+  const [textLabels, setTextLabels] = useState<TextLabel[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<bigint>>(new Set());
   const [activeTool, setActiveTool] = useState<ToolMode>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [scale, setScale] = useState<ScaleOption>("1:200");
   const [projectName, setProjectName] = useState("Main Casting Yard");
   const [yardSize, setYardSize] = useState(200);
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
 
   const clipboard = useRef<YardElement[]>([]);
+  const lastPlacedRef = useRef<{ x: number; y: number; width: number } | null>(
+    null,
+  );
+
+  // Undo/Redo stacks
+  const undoStack = useRef<HistorySnapshot[]>([]);
+  const redoStack = useRef<HistorySnapshot[]>([]);
+  // Refs to current state for use in closures
+  const elementsRef = useRef(elements);
+  const textLabelsRef = useRef(textLabels);
+  elementsRef.current = elements;
+  textLabelsRef.current = textLabels;
+
+  const pushHistory = useCallback(() => {
+    const snapshot: HistorySnapshot = {
+      elements: elementsRef.current,
+      textLabels: textLabelsRef.current,
+    };
+    undoStack.current = [
+      ...undoStack.current.slice(-MAX_HISTORY + 1),
+      snapshot,
+    ];
+    redoStack.current = [];
+  }, []);
+
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const refreshUndoRedo = useCallback(() => {
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(redoStack.current.length > 0);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.current.length === 0) return;
+    const snapshot = undoStack.current[undoStack.current.length - 1];
+    undoStack.current = undoStack.current.slice(0, -1);
+    redoStack.current = [
+      ...redoStack.current,
+      { elements: elementsRef.current, textLabels: textLabelsRef.current },
+    ];
+    setElements(snapshot.elements);
+    setTextLabels(snapshot.textLabels);
+    setCanUndo(undoStack.current.length > 0);
+    setCanRedo(true);
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.current.length === 0) return;
+    const snapshot = redoStack.current[redoStack.current.length - 1];
+    redoStack.current = redoStack.current.slice(0, -1);
+    undoStack.current = [
+      ...undoStack.current,
+      { elements: elementsRef.current, textLabels: textLabelsRef.current },
+    ];
+    setElements(snapshot.elements);
+    setTextLabels(snapshot.textLabels);
+    setCanUndo(true);
+    setCanRedo(redoStack.current.length > 0);
+  }, []);
 
   const saveProject = useSaveProject();
 
   const selectedElements = elements.filter((e) => selectedIds.has(e.id));
 
-  const handleAddElement = useCallback((item: LibraryItem) => {
-    const newEl: YardElement = {
-      id: genId(),
-      name: item.name,
-      elementType: item.elementType,
-      width: item.width,
-      height: item.height,
-      xPosition: 20 + Math.random() * 40,
-      yPosition: 20 + Math.random() * 40,
-      rotationAngle: 0,
-      color: item.color ?? ELEMENT_COLORS[item.elementType],
-      status: item.defaultStatus,
-      height3d: item.height3d ?? ELEMENT_3D_HEIGHT[item.elementType],
-      shape: "rectangle",
-    };
-    setElements((prev) => [...prev, newEl]);
-    setSelectedIds(new Set([newEl.id]));
-    toast.success(`Added ${item.name} to yard`);
-  }, []);
+  const handleMoveStart = useCallback(() => {
+    pushHistory();
+    refreshUndoRedo();
+  }, [pushHistory, refreshUndoRedo]);
+
+  const handleAddElement = useCallback(
+    (item: LibraryItem) => {
+      pushHistory();
+      let xPosition: number;
+      let yPosition: number;
+
+      if (lastPlacedRef.current === null) {
+        xPosition = PLACEMENT_START_X;
+        yPosition = PLACEMENT_START_Y;
+      } else {
+        xPosition =
+          lastPlacedRef.current.x +
+          lastPlacedRef.current.width +
+          PLACEMENT_SPACING;
+        yPosition = lastPlacedRef.current.y;
+      }
+
+      const newEl: YardElement = {
+        id: genId(),
+        name: item.name,
+        elementType: item.elementType,
+        width: item.width,
+        height: item.height,
+        xPosition,
+        yPosition,
+        rotationAngle: 0,
+        color: item.color ?? ELEMENT_COLORS[item.elementType],
+        status: item.defaultStatus,
+        height3d: item.height3d ?? ELEMENT_3D_HEIGHT[item.elementType],
+        shape: "rectangle",
+        imageUrl: item.imageUrl,
+      };
+
+      lastPlacedRef.current = { x: xPosition, y: yPosition, width: item.width };
+
+      setElements((prev) => [...prev, newEl]);
+      setSelectedIds(new Set([newEl.id]));
+      refreshUndoRedo();
+      toast.success(`Added ${item.name} to yard`);
+    },
+    [pushHistory, refreshUndoRedo],
+  );
 
   const handleDropElement = useCallback(
     (item: LibraryItem, x: number, y: number) => {
+      pushHistory();
       const newEl: YardElement = {
         id: genId(),
         name: item.name,
@@ -73,11 +175,13 @@ export default function App() {
         status: item.defaultStatus,
         height3d: item.height3d ?? ELEMENT_3D_HEIGHT[item.elementType],
         shape: "rectangle",
+        imageUrl: item.imageUrl,
       };
       setElements((prev) => [...prev, newEl]);
       setSelectedIds(new Set([newEl.id]));
+      refreshUndoRedo();
     },
-    [],
+    [pushHistory, refreshUndoRedo],
   );
 
   const handleMoveElement = useCallback((id: bigint, x: number, y: number) => {
@@ -108,33 +212,41 @@ export default function App() {
 
   const handleUpdateElement = useCallback(
     (id: bigint, changes: Partial<YardElement>) => {
+      pushHistory();
       setElements((prev) =>
         prev.map((e) => (e.id === id ? { ...e, ...changes } : e)),
       );
+      refreshUndoRedo();
     },
-    [],
+    [pushHistory, refreshUndoRedo],
   );
 
-  const handleDeleteElement = useCallback((id: bigint) => {
-    setElements((prev) => prev.filter((e) => e.id !== id));
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    toast.success("Element removed");
-  }, []);
+  const handleDeleteElement = useCallback(
+    (id: bigint) => {
+      pushHistory();
+      setElements((prev) => prev.filter((e) => e.id !== id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      refreshUndoRedo();
+      toast.success("Element removed");
+    },
+    [pushHistory, refreshUndoRedo],
+  );
 
   const handleDeleteSelected = useCallback(() => {
+    pushHistory();
     setElements((prev) => prev.filter((e) => !selectedIds.has(e.id)));
     setSelectedIds(new Set());
+    refreshUndoRedo();
     toast.success("Selected elements deleted");
-  }, [selectedIds]);
+  }, [selectedIds, pushHistory, refreshUndoRedo]);
 
   const handleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
       const allIds = new Set(elements.map((e) => e.id));
-      // If all already selected, deselect all
       if (prev.size === allIds.size) return new Set();
       return allIds;
     });
@@ -149,7 +261,6 @@ export default function App() {
     [selectedIds],
   );
 
-  // Bring the element to the top of the render stack (last in array = drawn on top)
   const handleBringToFront = useCallback((id: bigint) => {
     setElements((prev) => {
       const idx = prev.findIndex((e) => e.id === id);
@@ -162,7 +273,6 @@ export default function App() {
     toast.success("Brought to front");
   }, []);
 
-  // Send the element to the bottom of the render stack (first in array = drawn behind)
   const handleSendToBack = useCallback((id: bigint) => {
     setElements((prev) => {
       const idx = prev.findIndex((e) => e.id === id);
@@ -176,9 +286,36 @@ export default function App() {
   }, []);
 
   const handleClearYard = useCallback(() => {
+    pushHistory();
     setElements([]);
+    setTextLabels([]);
     setSelectedIds(new Set());
+    lastPlacedRef.current = null;
+    refreshUndoRedo();
     toast.info("Yard cleared");
+  }, [pushHistory, refreshUndoRedo]);
+
+  // Text label handlers
+  const handleAddTextLabel = useCallback(
+    (label: TextLabel) => {
+      pushHistory();
+      setTextLabels((prev) => [...prev, label]);
+      refreshUndoRedo();
+    },
+    [pushHistory, refreshUndoRedo],
+  );
+
+  const handleUpdateTextLabel = useCallback(
+    (id: bigint, changes: Partial<TextLabel>) => {
+      setTextLabels((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, ...changes } : l)),
+      );
+    },
+    [],
+  );
+
+  const handleDeleteTextLabel = useCallback((id: bigint) => {
+    setTextLabels((prev) => prev.filter((l) => l.id !== id));
   }, []);
 
   const handleSave = useCallback(() => {
@@ -191,11 +328,96 @@ export default function App() {
     );
   }, [saveProject, projectName, elements]);
 
-  // Keyboard shortcuts: Ctrl+A, Ctrl+C, Ctrl+V, Delete/Backspace
+  const handleSaveFile = useCallback(() => {
+    const data = {
+      version: 2,
+      projectName,
+      yardSize,
+      libraryItems,
+      elements: elements.map((el) => ({ ...el, id: el.id.toString() })),
+      textLabels: textLabels.map((l) => ({ ...l, id: l.id.toString() })),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${projectName.replace(/\s+/g, "_")}.cyld`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Layout saved to file");
+  }, [projectName, yardSize, libraryItems, elements, textLabels]);
+
+  const handleLoadFile = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".cyld,.json";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target?.result as string);
+          if (data.projectName) setProjectName(data.projectName);
+          if (data.yardSize) setYardSize(data.yardSize);
+          if (data.libraryItems) setLibraryItems(data.libraryItems);
+          if (data.elements) {
+            const loaded = data.elements.map((el: any) => ({
+              ...el,
+              id: BigInt(el.id),
+            }));
+            setElements(loaded);
+            if (loaded.length > 0) {
+              const last = loaded[loaded.length - 1] as YardElement;
+              lastPlacedRef.current = {
+                x: last.xPosition,
+                y: last.yPosition,
+                width: last.width,
+              };
+            }
+          }
+          if (data.textLabels) {
+            setTextLabels(
+              data.textLabels.map((l: any) => ({ ...l, id: BigInt(l.id) })),
+            );
+          }
+          setSelectedIds(new Set());
+          toast.success("Layout loaded successfully");
+        } catch {
+          toast.error("Failed to load file — invalid format");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, []);
+
+  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      // Undo: Ctrl+Z (no Shift)
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      // Redo: Ctrl+Shift+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+      // Redo: Ctrl+Y (alternative)
+      if ((e.ctrlKey || e.metaKey) && e.key === "y") {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
 
       if ((e.ctrlKey || e.metaKey) && e.key === "a") {
         e.preventDefault();
@@ -220,6 +442,7 @@ export default function App() {
         const srcs = clipboard.current;
         if (!srcs || srcs.length === 0) return;
         e.preventDefault();
+        pushHistory();
         const newEls: YardElement[] = srcs.map((src) => ({
           ...src,
           id: genId(),
@@ -228,6 +451,7 @@ export default function App() {
         }));
         setElements((prev) => [...prev, ...newEls]);
         setSelectedIds(new Set(newEls.map((el) => el.id)));
+        refreshUndoRedo();
         toast.success(
           newEls.length === 1
             ? `Pasted ${srcs[0].name}`
@@ -236,8 +460,10 @@ export default function App() {
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIds.size > 0) {
           e.preventDefault();
+          pushHistory();
           setElements((prev) => prev.filter((el) => !selectedIds.has(el.id)));
           setSelectedIds(new Set());
+          refreshUndoRedo();
           toast.success(
             selectedIds.size === 1
               ? "Element deleted"
@@ -249,9 +475,8 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedIds]);
+  }, [selectedIds, handleUndo, handleRedo, pushHistory, refreshUndoRedo]);
 
-  // The single selectedId for Canvas3D compatibility (first selected)
   const firstSelectedId = selectedIds.size > 0 ? [...selectedIds][0] : null;
 
   return (
@@ -304,11 +529,21 @@ export default function App() {
         onSelectAll={handleSelectAll}
         selectedCount={selectedIds.size}
         totalCount={elements.length}
+        onSaveFile={handleSaveFile}
+        onLoadFile={handleLoadFile}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
       />
 
       {/* Main 3-column layout */}
       <div className="flex flex-1 overflow-hidden">
-        <LeftSidebar onAddElement={handleAddElement} />
+        <LeftSidebar
+          onAddElement={handleAddElement}
+          libraryItems={libraryItems}
+          onLibraryChange={setLibraryItems}
+        />
 
         {viewMode === "2d" ? (
           <Canvas2D
@@ -322,6 +557,11 @@ export default function App() {
             onMoveElements={handleMoveElements}
             onRotateElement={handleRotateElement}
             onDropElement={handleDropElement}
+            textLabels={textLabels}
+            onAddTextLabel={handleAddTextLabel}
+            onUpdateTextLabel={handleUpdateTextLabel}
+            onDeleteTextLabel={handleDeleteTextLabel}
+            onMoveStart={handleMoveStart}
           />
         ) : (
           <Canvas3D

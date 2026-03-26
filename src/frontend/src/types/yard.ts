@@ -7,7 +7,13 @@ export type ElementType =
   | "custom";
 export type ElementStatus = "planned" | "inProgress" | "complete";
 export type ViewMode = "2d" | "3d";
-export type ToolMode = "select" | "move" | "rotate" | "measure" | "clear";
+export type ToolMode =
+  | "select"
+  | "move"
+  | "rotate"
+  | "measure"
+  | "clear"
+  | "text";
 export type ScaleOption = "1:100" | "1:200" | "1:500";
 export type ShapeType =
   | "rectangle"
@@ -29,6 +35,15 @@ export interface YardElement {
   status: ElementStatus;
   height3d: number; // meters vertical in 3D view
   shape: ShapeType;
+  imageUrl?: string; // if set, renders as image on canvas
+}
+
+export interface TextLabel {
+  id: bigint;
+  text: string;
+  x: number; // meters
+  y: number; // meters
+  fontSize: number; // px, default 14
 }
 
 export interface LibraryItem {
@@ -39,6 +54,7 @@ export interface LibraryItem {
   height3d?: number; // optional 3D height override
   color: string;
   defaultStatus: ElementStatus;
+  imageUrl?: string; // if set, renders as image on canvas
 }
 
 export const ELEMENT_COLORS: Record<ElementType, string> = {

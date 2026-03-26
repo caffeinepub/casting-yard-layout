@@ -24,7 +24,7 @@ export function Header({
 }: HeaderProps) {
   return (
     <header
-      className="flex items-center justify-between px-4 h-12 shrink-0 no-select"
+      className="flex items-center justify-between px-4 h-14 shrink-0 no-select"
       style={{ backgroundColor: "oklch(0.22 0.028 220)" }}
       data-ocid="header.section"
     >
@@ -50,8 +50,8 @@ export function Header({
         ))}
       </nav>
 
-      {/* Project selector + Save */}
-      <div className="flex items-center gap-2">
+      {/* Right side: Project selector + Save + Logo + Trademark */}
+      <div className="flex items-center gap-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -92,6 +92,25 @@ export function Header({
           )}
           SAVE PROJECT
         </Button>
+
+        {/* Divider */}
+        <div className="h-8 w-px bg-white/20" />
+
+        {/* PCEPL Logo + Trademark */}
+        <div className="flex items-center gap-2">
+          <img
+            src="/assets/uploads/image-019d2ab3-dddb-71b9-873f-0a7d4163888c-1.png"
+            alt="PCEPL Logo"
+            className="h-9 w-auto object-contain rounded"
+            data-ocid="header.pcepl_logo.image"
+          />
+          <span
+            className="text-white/50 text-[10px] leading-tight max-w-[100px] hidden lg:block"
+            data-ocid="header.trademark.text"
+          >
+            This app is Developed by PCEPL
+          </span>
+        </div>
       </div>
     </header>
   );

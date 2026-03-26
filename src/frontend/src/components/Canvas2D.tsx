@@ -3,6 +3,7 @@ import type {
   LibraryItem,
   ScaleOption,
   ShapeType,
+  TextLabel,
   ToolMode,
   YardElement,
 } from "../types/yard";
@@ -18,6 +19,11 @@ interface Canvas2DProps {
   onMoveElements: (moves: { id: bigint; x: number; y: number }[]) => void;
   onRotateElement: (id: bigint, angle: number) => void;
   onDropElement: (item: LibraryItem, x: number, y: number) => void;
+  textLabels: TextLabel[];
+  onAddTextLabel: (label: TextLabel) => void;
+  onUpdateTextLabel: (id: bigint, changes: Partial<TextLabel>) => void;
+  onDeleteTextLabel: (id: bigint) => void;
+  onMoveStart: () => void;
 }
 
 const SCALE_PX_PER_M: Record<ScaleOption, number> = {
@@ -29,6 +35,12 @@ const SCALE_PX_PER_M: Record<ScaleOption, number> = {
 const GRID_STEP = 10; // meters
 
 const HANDLE_POSITIONS = ["tl", "tr", "bl", "br"] as const;
+
+let textLabelCounter = BigInt(10000);
+function genTextId(): bigint {
+  textLabelCounter += BigInt(1);
+  return textLabelCounter;
+}
 
 function ElementShape({
   shape,
@@ -163,6 +175,11 @@ export function Canvas2D({
   onMoveElements,
   onRotateElement,
   onDropElement,
+  textLabels,
+  onAddTextLabel,
+  onUpdateTextLabel,
+  onDeleteTextLabel,
+  onMoveStart,
 }: Canvas2DProps) {
   const pxPerM = SCALE_PX_PER_M[scale];
   const yardPx = yardSize * pxPerM;
@@ -170,9 +187,19 @@ export function Canvas2D({
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Keep a ref to selectedIds so event handlers in useEffect can access current value
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
+
+  // Editing text state: null = not editing
+  // id = null means a new label, id = bigint means editing existing
+  const [editingText, setEditingText] = useState<{
+    id: bigint | null;
+    x: number; // svg px
+    y: number; // svg px
+    xM: number; // meters
+    yM: number; // meters
+    value: string;
+  } | null>(null);
 
   const [drag, setDrag] = useState<{
     id: bigint;
@@ -191,7 +218,6 @@ export function Canvas2D({
     origAngle: number;
   } | null>(null);
 
-  // Marquee selection state
   const [marquee, setMarquee] = useState<{
     startX: number;
     startY: number;
@@ -223,10 +249,42 @@ export function Canvas2D({
     [pxPerM],
   );
 
+  const commitTextEdit = useCallback(
+    (value: string) => {
+      if (!editingText) return;
+      const trimmed = value.trim();
+      if (editingText.id === null) {
+        // New label
+        if (trimmed) {
+          onAddTextLabel({
+            id: genTextId(),
+            text: trimmed,
+            x: editingText.xM,
+            y: editingText.yM,
+            fontSize: 14,
+          });
+        }
+      } else {
+        // Edit existing
+        if (trimmed) {
+          onUpdateTextLabel(editingText.id, { text: trimmed });
+        } else {
+          onDeleteTextLabel(editingText.id);
+        }
+      }
+      setEditingText(null);
+    },
+    [editingText, onAddTextLabel, onUpdateTextLabel, onDeleteTextLabel],
+  );
+
   const handleMouseDown = (e: React.MouseEvent, el: YardElement) => {
     e.stopPropagation();
 
-    // Shift-click: toggle element in selection
+    if (activeTool === "text") {
+      // In text mode, clicking an element still allows text editing on the canvas
+      return;
+    }
+
     if (e.shiftKey) {
       const next = new Set(selectedIds);
       if (next.has(el.id)) {
@@ -236,6 +294,7 @@ export function Canvas2D({
       }
       onSelectElement(next);
       if (activeTool === "select" || activeTool === "move") {
+        onMoveStart();
         const pt = getSVGPoint(e);
         const origPositions = new Map(
           elements
@@ -254,12 +313,12 @@ export function Canvas2D({
       return;
     }
 
-    // Normal click: if element not in selection, set selection to just this element
     if (!selectedIds.has(el.id)) {
       onSelectElement(new Set([el.id]));
     }
 
     if (activeTool === "select" || activeTool === "move") {
+      onMoveStart();
       const pt = getSVGPoint(e);
       const activeIds = selectedIds.has(el.id) ? selectedIds : new Set([el.id]);
       const origPositions = new Map(
@@ -294,7 +353,6 @@ export function Canvas2D({
     }
   };
 
-  // Marquee mousedown on background
   const handleBackgroundMouseDown = (e: React.MouseEvent) => {
     if (
       e.target !== svgRef.current &&
@@ -302,6 +360,26 @@ export function Canvas2D({
     ) {
       return;
     }
+
+    if (activeTool === "text") {
+      // Commit any ongoing edit first
+      if (editingText) {
+        // Don't start new until old is committed via blur
+        return;
+      }
+      const pt = getSVGPoint(e);
+      const meters = svgToMeters(pt.x, pt.y);
+      setEditingText({
+        id: null,
+        x: pt.x,
+        y: pt.y,
+        xM: meters.x,
+        yM: meters.y,
+        value: "",
+      });
+      return;
+    }
+
     if (activeTool !== "select" && activeTool !== "move") {
       onSelectElement(new Set());
       return;
@@ -380,7 +458,6 @@ export function Canvas2D({
           const newIds = new Set(intersected.map((el) => el.id));
 
           if (marquee.shift) {
-            // Merge with current selection using the ref
             const merged = new Set(selectedIdsRef.current);
             for (const id of newIds) merged.add(id);
             onSelectElement(merged);
@@ -508,6 +585,15 @@ export function Canvas2D({
       }
     : null;
 
+  const cursorClass =
+    activeTool === "text"
+      ? "cursor-text"
+      : activeTool === "move" || drag
+        ? "cursor-move"
+        : activeTool === "rotate"
+          ? "cursor-crosshair"
+          : "";
+
   return (
     <div
       ref={containerRef}
@@ -527,11 +613,7 @@ export function Canvas2D({
         role="img"
         aria-label="Yard layout canvas"
         onMouseDown={handleBackgroundMouseDown}
-        className={`no-select ${
-          activeTool === "move" || drag ? "cursor-move" : ""
-        } ${activeTool === "rotate" ? "cursor-crosshair" : ""} ${
-          marquee ? "select-none" : ""
-        }`}
+        className={`no-select ${cursorClass} ${marquee ? "select-none" : ""}`}
       >
         <title>Yard layout canvas</title>
 
@@ -573,7 +655,12 @@ export function Canvas2D({
               transform={`rotate(${el.rotationAngle}, ${cx}, ${cy})`}
               onMouseDown={(e) => handleMouseDown(e, el)}
               style={{
-                cursor: activeTool === "rotate" ? "crosshair" : "pointer",
+                cursor:
+                  activeTool === "rotate"
+                    ? "crosshair"
+                    : activeTool === "text"
+                      ? "text"
+                      : "pointer",
               }}
             >
               {/* Shadow */}
@@ -585,16 +672,43 @@ export function Canvas2D({
                 fill="rgba(0,0,0,0.12)"
                 rx={2}
               />
-              {/* Shape-aware element body */}
-              <ElementShape
-                shape={el.shape}
-                ex={ex}
-                ey={ey}
-                ew={ew}
-                eh={eh}
-                color={el.color}
-                isSelected={isSelected}
-              />
+              {/* Shape-aware element body or image */}
+              {el.imageUrl ? (
+                <>
+                  <image
+                    href={el.imageUrl}
+                    x={ex}
+                    y={ey}
+                    width={ew}
+                    height={eh}
+                    preserveAspectRatio="xMidYMid meet"
+                    style={{ pointerEvents: "none" }}
+                  />
+                  {isSelected && (
+                    <rect
+                      x={ex}
+                      y={ey}
+                      width={ew}
+                      height={eh}
+                      fill="none"
+                      stroke="#1E7ACB"
+                      strokeWidth={2}
+                      strokeDasharray="4 2"
+                      rx={2}
+                    />
+                  )}
+                </>
+              ) : (
+                <ElementShape
+                  shape={el.shape}
+                  ex={ex}
+                  ey={ey}
+                  ew={ew}
+                  eh={eh}
+                  color={el.color}
+                  isSelected={isSelected}
+                />
+              )}
               {/* Label */}
               <text
                 x={cx}
@@ -669,6 +783,143 @@ export function Canvas2D({
             </g>
           );
         })}
+
+        {/* Text Labels */}
+        {textLabels.map((label) => {
+          const px = label.x * pxPerM + MARGIN;
+          const py = label.y * pxPerM + MARGIN;
+          const isEditing = editingText?.id === label.id;
+
+          if (isEditing) {
+            return (
+              <foreignObject
+                key={String(label.id)}
+                x={px}
+                y={py - label.fontSize - 2}
+                width={220}
+                height={label.fontSize + 12}
+              >
+                <input
+                  // biome-ignore lint/a11y/noAutofocus: intentional for inline text editing
+                  autoFocus
+                  value={editingText?.value ?? ""}
+                  onChange={(e) =>
+                    setEditingText((prev) =>
+                      prev ? { ...prev, value: e.target.value } : null,
+                    )
+                  }
+                  onBlur={(e) => commitTextEdit(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      commitTextEdit(e.currentTarget.value);
+                    if (e.key === "Escape") setEditingText(null);
+                    e.stopPropagation();
+                  }}
+                  style={{
+                    fontSize: `${label.fontSize}px`,
+                    fontFamily: "sans-serif",
+                    border: "1px solid #1E7ACB",
+                    borderRadius: 3,
+                    padding: "1px 4px",
+                    outline: "none",
+                    background: "rgba(255,255,255,0.95)",
+                    color: "#1a1a2e",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </foreignObject>
+            );
+          }
+
+          return (
+            <text
+              key={String(label.id)}
+              x={px}
+              y={py}
+              fontSize={label.fontSize}
+              fontFamily="sans-serif"
+              fill="#1a1a2e"
+              style={{
+                pointerEvents: "all",
+                cursor: activeTool === "text" ? "text" : "default",
+                userSelect: "none",
+              }}
+              onClick={(e) => {
+                if (activeTool === "text") {
+                  e.stopPropagation();
+                  setEditingText({
+                    id: label.id,
+                    x: px,
+                    y: py,
+                    xM: label.x,
+                    yM: label.y,
+                    value: label.text,
+                  });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (
+                  (e.key === "Enter" || e.key === " ") &&
+                  activeTool === "text"
+                ) {
+                  e.stopPropagation();
+                  setEditingText({
+                    id: label.id,
+                    x: px,
+                    y: py,
+                    xM: label.x,
+                    yM: label.y,
+                    value: label.text,
+                  });
+                }
+              }}
+              tabIndex={activeTool === "text" ? 0 : -1}
+            >
+              {label.text}
+            </text>
+          );
+        })}
+
+        {/* New text input (no existing id) */}
+        {editingText && editingText.id === null && (
+          <foreignObject
+            x={editingText.x}
+            y={editingText.y - 18}
+            width={220}
+            height={28}
+          >
+            <input
+              // biome-ignore lint/a11y/noAutofocus: intentional for inline text editing
+              autoFocus
+              value={editingText.value}
+              onChange={(e) =>
+                setEditingText((prev) =>
+                  prev ? { ...prev, value: e.target.value } : null,
+                )
+              }
+              onBlur={(e) => commitTextEdit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitTextEdit(e.currentTarget.value);
+                if (e.key === "Escape") setEditingText(null);
+                e.stopPropagation();
+              }}
+              placeholder="Type text..."
+              style={{
+                fontSize: "14px",
+                fontFamily: "sans-serif",
+                border: "1px solid #1E7ACB",
+                borderRadius: 3,
+                padding: "1px 4px",
+                outline: "none",
+                background: "rgba(255,255,255,0.95)",
+                color: "#1a1a2e",
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+            />
+          </foreignObject>
+        )}
 
         {/* Marquee selection rectangle */}
         {marqueeRect && marqueeRect.w > 2 && marqueeRect.h > 2 && (
