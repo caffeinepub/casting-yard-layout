@@ -190,6 +190,43 @@ export function Canvas2D({
   const selectedIdsRef = useRef(selectedIds);
   selectedIdsRef.current = selectedIds;
 
+  // Zoom & pan state
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const panRef = useRef(pan);
+  panRef.current = pan;
+  const panDrag = useRef<{
+    startX: number;
+    startY: number;
+    origPan: { x: number; y: number };
+  } | null>(null);
+
+  // Attach wheel listener with { passive: false } to prevent page scroll
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const rect = el.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      setZoom((prev) => {
+        const newZoom = Math.max(0.2, Math.min(8, prev * factor));
+        const ratio = newZoom / prev;
+        setPan((p) => ({
+          x: mx - ratio * (mx - p.x),
+          y: my - ratio * (my - p.y),
+        }));
+        return newZoom;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   // Editing text state: null = not editing
   // id = null means a new label, id = bigint means editing existing
   const [editingText, setEditingText] = useState<{
@@ -234,8 +271,8 @@ export function Canvas2D({
       if (!svg) return { x: 0, y: 0 };
       const rect = svg.getBoundingClientRect();
       return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: (e.clientX - rect.left) / zoomRef.current,
+        y: (e.clientY - rect.top) / zoomRef.current,
       };
     },
     [],
@@ -397,8 +434,30 @@ export function Canvas2D({
     }
   };
 
+  // Handle middle mouse button pan on container
+  const handleContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      panDrag.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        origPan: panRef.current,
+      };
+    }
+  };
+
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
+      // Middle mouse pan
+      if (panDrag.current) {
+        const dx = e.clientX - panDrag.current.startX;
+        const dy = e.clientY - panDrag.current.startY;
+        setPan({
+          x: panDrag.current.origPan.x + dx,
+          y: panDrag.current.origPan.y + dy,
+        });
+      }
+
       if (drag) {
         const pt = getSVGPoint(e);
         const dx = (pt.x - drag.startX) / pxPerM;
@@ -439,7 +498,12 @@ export function Canvas2D({
       }
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (e: MouseEvent) => {
+      // Clear middle mouse pan
+      if (e.button === 1) {
+        panDrag.current = null;
+      }
+
       if (marquee) {
         const mx = Math.min(marquee.startX, marquee.currentX);
         const my = Math.min(marquee.startY, marquee.currentY);
@@ -506,8 +570,8 @@ export function Canvas2D({
       const svg = svgRef.current;
       if (!svg) return;
       const rect = svg.getBoundingClientRect();
-      const svgX = e.clientX - rect.left;
-      const svgY = e.clientY - rect.top;
+      const svgX = (e.clientX - rect.left) / zoomRef.current;
+      const svgY = (e.clientY - rect.top) / zoomRef.current;
       const { x, y } = svgToMeters(svgX, svgY);
       onDropElement(item, Math.max(0, x), Math.max(0, y));
     } catch {
@@ -597,362 +661,372 @@ export function Canvas2D({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 overflow-auto bg-[oklch(0.98_0.004_240)] ${
+      className={`flex-1 overflow-hidden bg-[oklch(0.98_0.004_240)] ${
         isDragOver ? "ring-2 ring-inset ring-blue-400" : ""
       }`}
+      onMouseDown={handleContainerMouseDown}
       onDragOver={handleDragOver}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
       data-ocid="canvas.canvas_target"
       data-printable="true"
     >
-      <svg
-        ref={svgRef}
-        width={svgW}
-        height={svgH}
-        role="img"
-        aria-label="Yard layout canvas"
-        onMouseDown={handleBackgroundMouseDown}
-        className={`no-select ${cursorClass} ${marquee ? "select-none" : ""}`}
+      <div
+        style={{
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+          transformOrigin: "0 0",
+          willChange: "transform",
+        }}
       >
-        <title>Yard layout canvas</title>
+        <svg
+          ref={svgRef}
+          width={svgW}
+          height={svgH}
+          role="img"
+          aria-label="Yard layout canvas"
+          onMouseDown={handleBackgroundMouseDown}
+          className={`no-select ${cursorClass} ${marquee ? "select-none" : ""}`}
+        >
+          <title>Yard layout canvas</title>
 
-        {/* White yard background */}
-        <rect
-          className="canvas-bg"
-          x={MARGIN}
-          y={MARGIN}
-          width={yardPx}
-          height={yardPx}
-          fill="white"
-          stroke="#94a3b8"
-          strokeWidth={1}
-        />
-
-        {gridLines}
-        {scaleMarkers}
-
-        {/* Elements */}
-        {elements.map((el) => {
-          const ex = el.xPosition * pxPerM + MARGIN;
-          const ey = el.yPosition * pxPerM + MARGIN;
-          const ew = el.width * pxPerM;
-          const eh = Math.max(el.height * pxPerM, 6);
-          const isSelected = selectedIds.has(el.id);
-          const cx = ex + ew / 2;
-          const cy = ey + eh / 2;
-
-          const handlePositions: Record<string, [number, number]> = {
-            tl: [ex, ey],
-            tr: [ex + ew, ey],
-            bl: [ex, ey + eh],
-            br: [ex + ew, ey + eh],
-          };
-
-          return (
-            <g
-              key={String(el.id)}
-              transform={`rotate(${el.rotationAngle}, ${cx}, ${cy})`}
-              onMouseDown={(e) => handleMouseDown(e, el)}
-              style={{
-                cursor:
-                  activeTool === "rotate"
-                    ? "crosshair"
-                    : activeTool === "text"
-                      ? "text"
-                      : "pointer",
-              }}
-            >
-              {/* Shadow */}
-              <rect
-                x={ex + 2}
-                y={ey + 2}
-                width={ew}
-                height={eh}
-                fill="rgba(0,0,0,0.12)"
-                rx={2}
-              />
-              {/* Shape-aware element body or image */}
-              {el.imageUrl ? (
-                <>
-                  <image
-                    href={el.imageUrl}
-                    x={ex}
-                    y={ey}
-                    width={ew}
-                    height={eh}
-                    preserveAspectRatio="xMidYMid meet"
-                    style={{ pointerEvents: "none" }}
-                  />
-                  {isSelected && (
-                    <rect
-                      x={ex}
-                      y={ey}
-                      width={ew}
-                      height={eh}
-                      fill="none"
-                      stroke="#1E7ACB"
-                      strokeWidth={2}
-                      strokeDasharray="4 2"
-                      rx={2}
-                    />
-                  )}
-                </>
-              ) : (
-                <ElementShape
-                  shape={el.shape}
-                  ex={ex}
-                  ey={ey}
-                  ew={ew}
-                  eh={eh}
-                  color={el.color}
-                  isSelected={isSelected}
-                />
-              )}
-              {/* Label */}
-              <text
-                x={cx}
-                y={cy + 3.5}
-                textAnchor="middle"
-                fontSize={Math.min(10, Math.max(7, ew / 4))}
-                fontWeight="700"
-                fill="rgba(0,0,0,0.75)"
-                style={{ pointerEvents: "none" }}
-              >
-                {el.name.split(" ").slice(-1)[0]}
-              </text>
-              {/* Selection handles */}
-              {isSelected && (
-                <>
-                  {HANDLE_POSITIONS.map((pos) => {
-                    const [hx, hy] = handlePositions[pos];
-                    return (
-                      <rect
-                        key={pos}
-                        x={hx - 3}
-                        y={hy - 3}
-                        width={6}
-                        height={6}
-                        fill="white"
-                        stroke="#1E7ACB"
-                        strokeWidth={1.5}
-                        rx={1}
-                        style={{ pointerEvents: "none" }}
-                      />
-                    );
-                  })}
-                  {/* Rotate handle - only show for single selection */}
-                  {selectedIds.size === 1 && (
-                    <>
-                      <circle
-                        cx={cx}
-                        cy={ey - 10}
-                        r={4}
-                        fill="#1E7ACB"
-                        stroke="white"
-                        strokeWidth={1.5}
-                        style={{ cursor: "crosshair" }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          const pt = getSVGPoint(e);
-                          const angle =
-                            Math.atan2(pt.y - cy, pt.x - cx) * (180 / Math.PI);
-                          setRotateDrag({
-                            id: el.id,
-                            cx,
-                            cy,
-                            startAngle: angle,
-                            origAngle: el.rotationAngle,
-                          });
-                        }}
-                      />
-                      <line
-                        x1={cx}
-                        y1={ey}
-                        x2={cx}
-                        y2={ey - 10}
-                        stroke="#1E7ACB"
-                        strokeWidth={1}
-                        strokeDasharray="2,2"
-                        style={{ pointerEvents: "none" }}
-                      />
-                    </>
-                  )}
-                </>
-              )}
-            </g>
-          );
-        })}
-
-        {/* Text Labels */}
-        {textLabels.map((label) => {
-          const px = label.x * pxPerM + MARGIN;
-          const py = label.y * pxPerM + MARGIN;
-          const isEditing = editingText?.id === label.id;
-
-          if (isEditing) {
-            return (
-              <foreignObject
-                key={String(label.id)}
-                x={px}
-                y={py - label.fontSize - 2}
-                width={220}
-                height={label.fontSize + 12}
-              >
-                <input
-                  // biome-ignore lint/a11y/noAutofocus: intentional for inline text editing
-                  autoFocus
-                  value={editingText?.value ?? ""}
-                  onChange={(e) =>
-                    setEditingText((prev) =>
-                      prev ? { ...prev, value: e.target.value } : null,
-                    )
-                  }
-                  onBlur={(e) => commitTextEdit(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter")
-                      commitTextEdit(e.currentTarget.value);
-                    if (e.key === "Escape") setEditingText(null);
-                    e.stopPropagation();
-                  }}
-                  style={{
-                    fontSize: `${label.fontSize}px`,
-                    fontFamily: "sans-serif",
-                    border: "1px solid #1E7ACB",
-                    borderRadius: 3,
-                    padding: "1px 4px",
-                    outline: "none",
-                    background: "rgba(255,255,255,0.95)",
-                    color: "#1a1a2e",
-                    width: "100%",
-                    boxSizing: "border-box",
-                  }}
-                />
-              </foreignObject>
-            );
-          }
-
-          return (
-            <text
-              key={String(label.id)}
-              x={px}
-              y={py}
-              fontSize={label.fontSize}
-              fontFamily="sans-serif"
-              fill="#1a1a2e"
-              style={{
-                pointerEvents: "all",
-                cursor: activeTool === "text" ? "text" : "default",
-                userSelect: "none",
-              }}
-              onClick={(e) => {
-                if (activeTool === "text") {
-                  e.stopPropagation();
-                  setEditingText({
-                    id: label.id,
-                    x: px,
-                    y: py,
-                    xM: label.x,
-                    yM: label.y,
-                    value: label.text,
-                  });
-                }
-              }}
-              onKeyDown={(e) => {
-                if (
-                  (e.key === "Enter" || e.key === " ") &&
-                  activeTool === "text"
-                ) {
-                  e.stopPropagation();
-                  setEditingText({
-                    id: label.id,
-                    x: px,
-                    y: py,
-                    xM: label.x,
-                    yM: label.y,
-                    value: label.text,
-                  });
-                }
-              }}
-              tabIndex={activeTool === "text" ? 0 : -1}
-            >
-              {label.text}
-            </text>
-          );
-        })}
-
-        {/* New text input (no existing id) */}
-        {editingText && editingText.id === null && (
-          <foreignObject
-            x={editingText.x}
-            y={editingText.y - 18}
-            width={220}
-            height={28}
-          >
-            <input
-              // biome-ignore lint/a11y/noAutofocus: intentional for inline text editing
-              autoFocus
-              value={editingText.value}
-              onChange={(e) =>
-                setEditingText((prev) =>
-                  prev ? { ...prev, value: e.target.value } : null,
-                )
-              }
-              onBlur={(e) => commitTextEdit(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitTextEdit(e.currentTarget.value);
-                if (e.key === "Escape") setEditingText(null);
-                e.stopPropagation();
-              }}
-              placeholder="Type text..."
-              style={{
-                fontSize: "14px",
-                fontFamily: "sans-serif",
-                border: "1px solid #1E7ACB",
-                borderRadius: 3,
-                padding: "1px 4px",
-                outline: "none",
-                background: "rgba(255,255,255,0.95)",
-                color: "#1a1a2e",
-                width: "100%",
-                boxSizing: "border-box",
-              }}
-            />
-          </foreignObject>
-        )}
-
-        {/* Marquee selection rectangle */}
-        {marqueeRect && marqueeRect.w > 2 && marqueeRect.h > 2 && (
+          {/* White yard background */}
           <rect
-            x={marqueeRect.x}
-            y={marqueeRect.y}
-            width={marqueeRect.w}
-            height={marqueeRect.h}
-            fill="rgba(30,122,203,0.08)"
-            stroke="#1E7ACB"
-            strokeWidth={1.5}
-            strokeDasharray="5,3"
-            rx={2}
-            style={{ pointerEvents: "none" }}
-          />
-        )}
-
-        {/* Drag-over overlay */}
-        {isDragOver && (
-          <rect
+            className="canvas-bg"
             x={MARGIN}
             y={MARGIN}
             width={yardPx}
             height={yardPx}
-            fill="rgba(30,122,203,0.06)"
-            stroke="#1E7ACB"
-            strokeWidth={2}
-            strokeDasharray="6,4"
-            rx={4}
-            style={{ pointerEvents: "none" }}
+            fill="white"
+            stroke="#94a3b8"
+            strokeWidth={1}
           />
-        )}
-      </svg>
+
+          {gridLines}
+          {scaleMarkers}
+
+          {/* Elements */}
+          {elements.map((el) => {
+            const ex = el.xPosition * pxPerM + MARGIN;
+            const ey = el.yPosition * pxPerM + MARGIN;
+            const ew = el.width * pxPerM;
+            const eh = Math.max(el.height * pxPerM, 6);
+            const isSelected = selectedIds.has(el.id);
+            const cx = ex + ew / 2;
+            const cy = ey + eh / 2;
+
+            const handlePositions: Record<string, [number, number]> = {
+              tl: [ex, ey],
+              tr: [ex + ew, ey],
+              bl: [ex, ey + eh],
+              br: [ex + ew, ey + eh],
+            };
+
+            return (
+              <g
+                key={String(el.id)}
+                transform={`rotate(${el.rotationAngle}, ${cx}, ${cy})`}
+                onMouseDown={(e) => handleMouseDown(e, el)}
+                style={{
+                  cursor:
+                    activeTool === "rotate"
+                      ? "crosshair"
+                      : activeTool === "text"
+                        ? "text"
+                        : "pointer",
+                }}
+              >
+                {/* Shadow */}
+                <rect
+                  x={ex + 2}
+                  y={ey + 2}
+                  width={ew}
+                  height={eh}
+                  fill="rgba(0,0,0,0.12)"
+                  rx={2}
+                />
+                {/* Shape-aware element body or image */}
+                {el.imageUrl ? (
+                  <>
+                    <image
+                      href={el.imageUrl}
+                      x={ex}
+                      y={ey}
+                      width={ew}
+                      height={eh}
+                      preserveAspectRatio="xMidYMid meet"
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {isSelected && (
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill="none"
+                        stroke="#1E7ACB"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                        rx={2}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <ElementShape
+                    shape={el.shape}
+                    ex={ex}
+                    ey={ey}
+                    ew={ew}
+                    eh={eh}
+                    color={el.color}
+                    isSelected={isSelected}
+                  />
+                )}
+                {/* Label */}
+                <text
+                  x={cx}
+                  y={cy + 3.5}
+                  textAnchor="middle"
+                  fontSize={Math.min(10, Math.max(7, ew / 4))}
+                  fontWeight="700"
+                  fill="rgba(0,0,0,0.75)"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {el.name.split(" ").slice(-1)[0]}
+                </text>
+                {/* Selection handles */}
+                {isSelected && (
+                  <>
+                    {HANDLE_POSITIONS.map((pos) => {
+                      const [hx, hy] = handlePositions[pos];
+                      return (
+                        <rect
+                          key={pos}
+                          x={hx - 3}
+                          y={hy - 3}
+                          width={6}
+                          height={6}
+                          fill="white"
+                          stroke="#1E7ACB"
+                          strokeWidth={1.5}
+                          rx={1}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      );
+                    })}
+                    {/* Rotate handle - only show for single selection */}
+                    {selectedIds.size === 1 && (
+                      <>
+                        <circle
+                          cx={cx}
+                          cy={ey - 10}
+                          r={4}
+                          fill="#1E7ACB"
+                          stroke="white"
+                          strokeWidth={1.5}
+                          style={{ cursor: "crosshair" }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            const pt = getSVGPoint(e);
+                            const angle =
+                              Math.atan2(pt.y - cy, pt.x - cx) *
+                              (180 / Math.PI);
+                            setRotateDrag({
+                              id: el.id,
+                              cx,
+                              cy,
+                              startAngle: angle,
+                              origAngle: el.rotationAngle,
+                            });
+                          }}
+                        />
+                        <line
+                          x1={cx}
+                          y1={ey}
+                          x2={cx}
+                          y2={ey - 10}
+                          stroke="#1E7ACB"
+                          strokeWidth={1}
+                          strokeDasharray="2,2"
+                          style={{ pointerEvents: "none" }}
+                        />
+                      </>
+                    )}
+                  </>
+                )}
+              </g>
+            );
+          })}
+
+          {/* Text Labels */}
+          {textLabels.map((label) => {
+            const px = label.x * pxPerM + MARGIN;
+            const py = label.y * pxPerM + MARGIN;
+            const isEditing = editingText?.id === label.id;
+
+            if (isEditing) {
+              return (
+                <foreignObject
+                  key={String(label.id)}
+                  x={px}
+                  y={py - label.fontSize - 2}
+                  width={220}
+                  height={label.fontSize + 12}
+                >
+                  <input
+                    // biome-ignore lint/a11y/noAutofocus: intentional for inline text editing
+                    autoFocus
+                    value={editingText?.value ?? ""}
+                    onChange={(e) =>
+                      setEditingText((prev) =>
+                        prev ? { ...prev, value: e.target.value } : null,
+                      )
+                    }
+                    onBlur={(e) => commitTextEdit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter")
+                        commitTextEdit(e.currentTarget.value);
+                      if (e.key === "Escape") setEditingText(null);
+                      e.stopPropagation();
+                    }}
+                    style={{
+                      fontSize: `${label.fontSize}px`,
+                      fontFamily: "sans-serif",
+                      border: "1px solid #1E7ACB",
+                      borderRadius: 3,
+                      padding: "1px 4px",
+                      outline: "none",
+                      background: "rgba(255,255,255,0.95)",
+                      color: "#1a1a2e",
+                      width: "100%",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </foreignObject>
+              );
+            }
+
+            return (
+              <text
+                key={String(label.id)}
+                x={px}
+                y={py}
+                fontSize={label.fontSize}
+                fontFamily="sans-serif"
+                fill="#1a1a2e"
+                style={{
+                  pointerEvents: "all",
+                  cursor: activeTool === "text" ? "text" : "default",
+                  userSelect: "none",
+                }}
+                onClick={(e) => {
+                  if (activeTool === "text") {
+                    e.stopPropagation();
+                    setEditingText({
+                      id: label.id,
+                      x: px,
+                      y: py,
+                      xM: label.x,
+                      yM: label.y,
+                      value: label.text,
+                    });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (
+                    (e.key === "Enter" || e.key === " ") &&
+                    activeTool === "text"
+                  ) {
+                    e.stopPropagation();
+                    setEditingText({
+                      id: label.id,
+                      x: px,
+                      y: py,
+                      xM: label.x,
+                      yM: label.y,
+                      value: label.text,
+                    });
+                  }
+                }}
+                tabIndex={activeTool === "text" ? 0 : -1}
+              >
+                {label.text}
+              </text>
+            );
+          })}
+
+          {/* New text input (no existing id) */}
+          {editingText && editingText.id === null && (
+            <foreignObject
+              x={editingText.x}
+              y={editingText.y - 18}
+              width={220}
+              height={28}
+            >
+              <input
+                // biome-ignore lint/a11y/noAutofocus: intentional for inline text editing
+                autoFocus
+                value={editingText.value}
+                onChange={(e) =>
+                  setEditingText((prev) =>
+                    prev ? { ...prev, value: e.target.value } : null,
+                  )
+                }
+                onBlur={(e) => commitTextEdit(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitTextEdit(e.currentTarget.value);
+                  if (e.key === "Escape") setEditingText(null);
+                  e.stopPropagation();
+                }}
+                placeholder="Type text..."
+                style={{
+                  fontSize: "14px",
+                  fontFamily: "sans-serif",
+                  border: "1px solid #1E7ACB",
+                  borderRadius: 3,
+                  padding: "1px 4px",
+                  outline: "none",
+                  background: "rgba(255,255,255,0.95)",
+                  color: "#1a1a2e",
+                  width: "100%",
+                  boxSizing: "border-box",
+                }}
+              />
+            </foreignObject>
+          )}
+
+          {/* Marquee selection rectangle */}
+          {marqueeRect && marqueeRect.w > 2 && marqueeRect.h > 2 && (
+            <rect
+              x={marqueeRect.x}
+              y={marqueeRect.y}
+              width={marqueeRect.w}
+              height={marqueeRect.h}
+              fill="rgba(30,122,203,0.08)"
+              stroke="#1E7ACB"
+              strokeWidth={1.5}
+              strokeDasharray="5,3"
+              rx={2}
+              style={{ pointerEvents: "none" }}
+            />
+          )}
+
+          {/* Drag-over overlay */}
+          {isDragOver && (
+            <rect
+              x={MARGIN}
+              y={MARGIN}
+              width={yardPx}
+              height={yardPx}
+              fill="rgba(30,122,203,0.06)"
+              stroke="#1E7ACB"
+              strokeWidth={2}
+              strokeDasharray="6,4"
+              rx={4}
+              style={{ pointerEvents: "none" }}
+            />
+          )}
+        </svg>
+      </div>
     </div>
   );
 }
