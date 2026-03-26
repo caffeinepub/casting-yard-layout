@@ -1,0 +1,98 @@
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, Grid3x3, Loader2, Save } from "lucide-react";
+
+interface HeaderProps {
+  projectName: string;
+  onProjectChange: (name: string) => void;
+  onSave: () => void;
+  isSaving: boolean;
+  projects: string[];
+}
+
+export function Header({
+  projectName,
+  onProjectChange,
+  onSave,
+  isSaving,
+  projects,
+}: HeaderProps) {
+  return (
+    <header
+      className="flex items-center justify-between px-4 h-12 shrink-0 no-select"
+      style={{ backgroundColor: "oklch(0.22 0.028 220)" }}
+      data-ocid="header.section"
+    >
+      {/* Brand */}
+      <div className="flex items-center gap-2">
+        <Grid3x3 className="h-5 w-5" style={{ color: "#1E7ACB" }} />
+        <span className="text-white font-bold text-base tracking-wider">
+          CASTYARDPRO
+        </span>
+      </div>
+
+      {/* Nav */}
+      <nav className="hidden md:flex items-center gap-1">
+        {["Dashboard", "Projects", "Inventory", "Settings"].map((item) => (
+          <button
+            type="button"
+            key={item}
+            className="px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 rounded transition-colors"
+            data-ocid={`nav.${item.toLowerCase()}.link`}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+
+      {/* Project selector + Save */}
+      <div className="flex items-center gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white/80 bg-white/10 hover:bg-white/20 rounded transition-colors"
+              data-ocid="header.project.select"
+            >
+              {projectName}
+              <ChevronDown className="h-3 w-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {projects.map((p) => (
+              <DropdownMenuItem key={p} onClick={() => onProjectChange(p)}>
+                {p}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem
+              onClick={() => onProjectChange("New Yard Project")}
+            >
+              + New Project
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Button
+          size="sm"
+          onClick={onSave}
+          disabled={isSaving}
+          className="text-xs font-bold tracking-wide"
+          style={{ backgroundColor: "#1E7ACB", color: "white" }}
+          data-ocid="header.save_project.button"
+        >
+          {isSaving ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <Save className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          SAVE PROJECT
+        </Button>
+      </div>
+    </header>
+  );
+}
