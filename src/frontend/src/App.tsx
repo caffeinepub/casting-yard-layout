@@ -53,9 +53,12 @@ export default function App() {
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
 
   const clipboard = useRef<YardElement[]>([]);
-  const lastPlacedRef = useRef<{ x: number; y: number; width: number } | null>(
-    null,
-  );
+  const lastPlacedRef = useRef<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const undoStack = useRef<HistorySnapshot[]>([]);
   const redoStack = useRef<HistorySnapshot[]>([]);
@@ -160,7 +163,12 @@ export default function App() {
         imageUrl: item.imageUrl,
       };
 
-      lastPlacedRef.current = { x: xPosition, y: yPosition, width: item.width };
+      lastPlacedRef.current = {
+        x: xPosition,
+        y: yPosition,
+        width: item.width,
+        height: item.height,
+      };
 
       setElements((prev) => [...prev, newEl]);
       setSelectedIds(new Set([newEl.id]));
@@ -171,13 +179,36 @@ export default function App() {
   );
 
   const handleAddMultipleElements = useCallback(
-    (items: LibraryItem[], spacing: number) => {
+    (
+      items: LibraryItem[],
+      spacing: number,
+      direction: "horizontal" | "vertical" = "horizontal",
+      centerInYard?: {
+        yardLength: number;
+        yardWidth: number;
+        startX?: number;
+        startY?: number;
+      },
+    ) => {
       if (items.length === 0) return;
       pushHistory();
       let xPosition: number;
       let yPosition: number;
 
-      if (lastPlacedRef.current === null) {
+      if (centerInYard) {
+        xPosition =
+          centerInYard.startX ??
+          Math.max(0, (centerInYard.yardLength - items[0].width) / 2);
+        yPosition =
+          centerInYard.startY ??
+          Math.max(
+            0,
+            (centerInYard.yardWidth -
+              (items.reduce((acc, it) => acc + it.height, 0) +
+                (items.length - 1) * spacing)) /
+              2,
+          );
+      } else if (lastPlacedRef.current === null) {
         xPosition = PLACEMENT_START_X;
         yPosition = PLACEMENT_START_Y;
       } else {
@@ -190,6 +221,7 @@ export default function App() {
 
       const newEls: YardElement[] = [];
       let curX = xPosition;
+      let curY = yPosition;
       for (const item of items) {
         const el: YardElement = {
           id: genId(),
@@ -198,7 +230,7 @@ export default function App() {
           width: item.width,
           height: item.height,
           xPosition: curX,
-          yPosition,
+          yPosition: curY,
           rotationAngle: 0,
           color: item.color ?? ELEMENT_COLORS[item.elementType],
           status: item.defaultStatus,
@@ -207,7 +239,11 @@ export default function App() {
           imageUrl: item.imageUrl,
         };
         newEls.push(el);
-        curX += item.width + spacing;
+        if (direction === "vertical") {
+          curY += item.height + spacing;
+        } else {
+          curX += item.width + spacing;
+        }
       }
 
       const lastEl = newEls[newEls.length - 1];
@@ -215,6 +251,7 @@ export default function App() {
         x: lastEl.xPosition,
         y: lastEl.yPosition,
         width: lastEl.width,
+        height: lastEl.height,
       };
 
       setElements((prev) => [...prev, ...newEls]);
@@ -467,6 +504,7 @@ export default function App() {
             x: last.xPosition,
             y: last.yPosition,
             width: last.width,
+            height: last.height,
           };
         }
       }
@@ -781,6 +819,8 @@ export default function App() {
           onAddMultipleElements={handleAddMultipleElements}
           libraryItems={libraryItems}
           onLibraryChange={setLibraryItems}
+          yardLength={yardLength}
+          yardWidth={yardWidth}
         />
 
         {viewMode === "2d" ? (

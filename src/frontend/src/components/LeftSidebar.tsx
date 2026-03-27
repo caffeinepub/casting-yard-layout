@@ -42,9 +42,21 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
 
 interface LeftSidebarProps {
   onAddElement: (item: LibraryItem) => void;
-  onAddMultipleElements: (items: LibraryItem[], spacing: number) => void;
+  onAddMultipleElements: (
+    items: LibraryItem[],
+    spacing: number,
+    direction?: "horizontal" | "vertical",
+    centerInYard?: {
+      yardLength: number;
+      yardWidth: number;
+      startX?: number;
+      startY?: number;
+    },
+  ) => void;
   libraryItems: LibraryItem[];
   onLibraryChange: (items: LibraryItem[]) => void;
+  yardLength: number;
+  yardWidth: number;
 }
 
 export function LeftSidebar({
@@ -52,6 +64,8 @@ export function LeftSidebar({
   onAddMultipleElements,
   libraryItems,
   onLibraryChange,
+  yardLength,
+  yardWidth,
 }: LeftSidebarProps) {
   const [search, setSearch] = useState("");
 
@@ -73,6 +87,12 @@ export function LeftSidebar({
   const [iGirderWidth, setIGirderWidth] = useState("");
   const [iGirderHeight, setIGirderHeight] = useState("");
   const [iGirderCount, setIGirderCount] = useState("1");
+
+  // Bay config
+  const [bayDialogOpen, setBayDialogOpen] = useState(false);
+  const [bayLength, setBayLength] = useState("");
+  const [bayWidth, setBayWidth] = useState("");
+  const [bayCount, setBayCount] = useState("1");
 
   const batchingPlantItem = EQUIPMENT_ITEMS.find(
     (i) => i.name === "Batching-Plant",
@@ -130,16 +150,20 @@ export function LeftSidebar({
   };
 
   const handlePlaceIGirders = () => {
-    const length = Number.parseFloat(iGirderLength) || 10;
-    const width = Number.parseFloat(iGirderWidth) || 2;
+    // length = horizontal dimension (runs along X axis)
+    // width = vertical/spacing dimension (runs along Y axis)
+    const girderLength = Number.parseFloat(iGirderLength) || 10;
+    const girderWidth = Number.parseFloat(iGirderWidth) || 2;
     const height3d = Number.parseFloat(iGirderHeight) || 1.5;
     const count = Math.max(1, Number.parseInt(iGirderCount) || 1);
 
+    // In the canvas: element.width = horizontal span, element.height = vertical span
+    // I-Girders are horizontal: width = girder length, height = girder width
     const girderTemplate: LibraryItem = {
       name: "I-Girder",
       elementType: "custom",
-      width,
-      height: length,
+      width: girderLength, // horizontal (length of girder)
+      height: girderWidth, // vertical (width of girder)
       height3d,
       color: "#7c9cbf",
       defaultStatus: "planned",
@@ -149,12 +173,46 @@ export function LeftSidebar({
       ...girderTemplate,
     }));
 
-    onAddMultipleElements(items, 0.5);
+    // Place vertically: spacing between girders = girder width + 0.5m
+    onAddMultipleElements(items, girderWidth + 0.5, "vertical");
     setIGirderDialogOpen(false);
     setIGirderLength("");
     setIGirderWidth("");
     setIGirderHeight("");
     setIGirderCount("1");
+  };
+
+  const handlePlaceBays = () => {
+    const bLength = Number.parseFloat(bayLength) || 20;
+    const bWidth = Number.parseFloat(bayWidth) || 10;
+    const count = Math.max(1, Number.parseInt(bayCount) || 1);
+
+    const spacing = 30 + bWidth; // 30m gap + bay width between rows
+
+    const totalHeight = count * bWidth + (count - 1) * 30;
+    const startX = Math.max(0, (yardLength - bLength) / 2);
+    const startY = Math.max(0, (yardWidth - totalHeight) / 2);
+
+    const items: LibraryItem[] = Array.from({ length: count }, () => ({
+      name: "Bay",
+      elementType: "custom" as const,
+      width: bLength, // horizontal (length)
+      height: bWidth, // vertical (width)
+      height3d: 5,
+      color: "#e0b84a",
+      defaultStatus: "planned" as const,
+    }));
+
+    onAddMultipleElements(items, spacing, "vertical", {
+      yardLength,
+      yardWidth,
+      startX,
+      startY,
+    });
+    setBayDialogOpen(false);
+    setBayLength("");
+    setBayWidth("");
+    setBayCount("1");
   };
 
   const visibleItems = libraryItems.filter((i) =>
@@ -256,7 +314,7 @@ export function LeftSidebar({
               title="Click to configure and place I-Girders"
               data-ocid="sidebar.girders.i-girder"
             >
-              {/* I-Girder icon */}
+              {/* I-Girder icon — horizontal orientation */}
               <svg
                 width="18"
                 height="18"
@@ -393,12 +451,13 @@ export function LeftSidebar({
               {(iGirderLength || iGirderWidth) && (
                 <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
                   <div className="text-[9px] text-muted-foreground">
-                    0.5m spacing between girders
+                    Horizontal · {(Number.parseFloat(iGirderWidth) || 0) + 0.5}m
+                    vertical spacing
                   </div>
                   <div className="text-[10px] font-medium text-foreground">
                     {Math.max(1, Number.parseInt(iGirderCount) || 1)} girder
                     {(Number.parseInt(iGirderCount) || 1) > 1 ? "s" : ""} ×{" "}
-                    {iGirderLength || "?"} × {iGirderWidth || "?"}m
+                    {iGirderLength || "?"}m long × {iGirderWidth || "?"}m wide
                   </div>
                 </div>
               )}
@@ -423,6 +482,189 @@ export function LeftSidebar({
                   variant="outline"
                   className="flex-1 h-7 text-[11px]"
                   onClick={() => setIGirderDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Bay item */}
+        <div className="mx-2 mb-1">
+          <div className="group flex items-center gap-1 rounded hover:bg-muted/60 transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                setBayDialogOpen((prev) => !prev);
+                if (!bayDialogOpen) {
+                  setBayLength("");
+                  setBayWidth("");
+                  setBayCount("1");
+                }
+              }}
+              className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
+              title="Click to configure and place Bays"
+              data-ocid="sidebar.girders.bay"
+            >
+              {/* Bay icon */}
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                role="img"
+                aria-label="Bay"
+              >
+                <rect
+                  x="1"
+                  y="4"
+                  width="16"
+                  height="4"
+                  rx="0.5"
+                  fill="#e0b84a"
+                  stroke="#b8922a"
+                  strokeWidth="1"
+                />
+                <rect
+                  x="1"
+                  y="10"
+                  width="16"
+                  height="4"
+                  rx="0.5"
+                  fill="#e0b84a"
+                  stroke="#b8922a"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="9"
+                  y1="8"
+                  x2="9"
+                  y2="10"
+                  stroke="#b8922a"
+                  strokeWidth="1"
+                  strokeDasharray="1 1"
+                />
+              </svg>
+              <div className="flex flex-col items-start min-w-0 flex-1">
+                <span className="text-[12px] font-medium text-foreground truncate w-full">
+                  Bay
+                </span>
+                <div className="text-[9px] text-muted-foreground">
+                  Click to configure
+                </div>
+              </div>
+              <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            </button>
+          </div>
+
+          {/* Bay inline config panel */}
+          {bayDialogOpen && (
+            <div className="mt-1 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-foreground">
+                  Bay Config
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBayDialogOpen(false)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+
+              <div className="flex gap-1.5">
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="bay-count"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    No. of Bays
+                  </label>
+                  <Input
+                    id="bay-count"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="e.g. 3"
+                    value={bayCount}
+                    onChange={(e) => setBayCount(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-1.5">
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="bay-length"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Length (m)
+                  </label>
+                  <Input
+                    id="bay-length"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 50"
+                    value={bayLength}
+                    onChange={(e) => setBayLength(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="bay-width"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Width (m)
+                  </label>
+                  <Input
+                    id="bay-width"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 20"
+                    value={bayWidth}
+                    onChange={(e) => setBayWidth(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Preview info */}
+              {(bayLength || bayWidth) && (
+                <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
+                  <div className="text-[9px] text-muted-foreground">
+                    Horizontal · {30 + (Number.parseFloat(bayWidth) || 0)}m
+                    vertical spacing · centered in yard
+                  </div>
+                  <div className="text-[10px] font-medium text-foreground">
+                    {Math.max(1, Number.parseInt(bayCount) || 1)} bay
+                    {(Number.parseInt(bayCount) || 1) > 1 ? "s" : ""} ×{" "}
+                    {bayLength || "?"}m long × {bayWidth || "?"}m wide
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  className="flex-1 h-7 text-[11px]"
+                  onClick={handlePlaceBays}
+                  disabled={!bayLength || !bayWidth || !bayCount}
+                  data-ocid="bay.submit_button"
+                >
+                  Place
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-[11px]"
+                  onClick={() => setBayDialogOpen(false)}
                 >
                   Cancel
                 </Button>
