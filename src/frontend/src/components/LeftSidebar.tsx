@@ -187,7 +187,8 @@ export function LeftSidebar({
     const bWidth = Number.parseFloat(bayWidth) || 10;
     const count = Math.max(1, Number.parseInt(bayCount) || 1);
 
-    const spacing = 30 + bWidth; // 30m gap + bay width between rows
+    // spacing = gap between bay edges (edge-to-edge), exactly 30m
+    const spacing = 30;
 
     const totalHeight = count * bWidth + (count - 1) * 30;
     const startX = Math.max(0, (yardLength - bLength) / 2);
@@ -639,8 +640,7 @@ export function LeftSidebar({
               {(bayLength || bayWidth) && (
                 <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
                   <div className="text-[9px] text-muted-foreground">
-                    Horizontal · {30 + (Number.parseFloat(bayWidth) || 0)}m
-                    vertical spacing · centered in yard
+                    Horizontal · 30m vertical spacing · centered in yard
                   </div>
                   <div className="text-[10px] font-medium text-foreground">
                     {Math.max(1, Number.parseInt(bayCount) || 1)} bay
