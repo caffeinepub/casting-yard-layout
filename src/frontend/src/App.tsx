@@ -170,6 +170,65 @@ export default function App() {
     [pushHistory, refreshUndoRedo],
   );
 
+  const handleAddMultipleElements = useCallback(
+    (items: LibraryItem[], spacing: number) => {
+      if (items.length === 0) return;
+      pushHistory();
+      let xPosition: number;
+      let yPosition: number;
+
+      if (lastPlacedRef.current === null) {
+        xPosition = PLACEMENT_START_X;
+        yPosition = PLACEMENT_START_Y;
+      } else {
+        xPosition =
+          lastPlacedRef.current.x +
+          lastPlacedRef.current.width +
+          PLACEMENT_SPACING;
+        yPosition = lastPlacedRef.current.y;
+      }
+
+      const newEls: YardElement[] = [];
+      let curX = xPosition;
+      for (const item of items) {
+        const el: YardElement = {
+          id: genId(),
+          name: item.name,
+          elementType: item.elementType,
+          width: item.width,
+          height: item.height,
+          xPosition: curX,
+          yPosition,
+          rotationAngle: 0,
+          color: item.color ?? ELEMENT_COLORS[item.elementType],
+          status: item.defaultStatus,
+          height3d: item.height3d ?? ELEMENT_3D_HEIGHT[item.elementType],
+          shape: "rectangle",
+          imageUrl: item.imageUrl,
+        };
+        newEls.push(el);
+        curX += item.width + spacing;
+      }
+
+      const lastEl = newEls[newEls.length - 1];
+      lastPlacedRef.current = {
+        x: lastEl.xPosition,
+        y: lastEl.yPosition,
+        width: lastEl.width,
+      };
+
+      setElements((prev) => [...prev, ...newEls]);
+      setSelectedIds(new Set(newEls.map((el) => el.id)));
+      refreshUndoRedo();
+      toast.success(
+        items.length === 1
+          ? `Added ${items[0].name} to yard`
+          : `Added ${items.length} ${items[0].name}s to yard`,
+      );
+    },
+    [pushHistory, refreshUndoRedo],
+  );
+
   const handleDropElement = useCallback(
     (item: LibraryItem, x: number, y: number) => {
       pushHistory();
@@ -719,6 +778,7 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden">
         <LeftSidebar
           onAddElement={handleAddElement}
+          onAddMultipleElements={handleAddMultipleElements}
           libraryItems={libraryItems}
           onLibraryChange={setLibraryItems}
         />

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Trash2, X } from "lucide-react";
+import { Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import type { LibraryItem } from "../types/yard";
 
@@ -42,12 +42,14 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
 
 interface LeftSidebarProps {
   onAddElement: (item: LibraryItem) => void;
+  onAddMultipleElements: (items: LibraryItem[], spacing: number) => void;
   libraryItems: LibraryItem[];
   onLibraryChange: (items: LibraryItem[]) => void;
 }
 
 export function LeftSidebar({
   onAddElement,
+  onAddMultipleElements,
   libraryItems,
   onLibraryChange,
 }: LeftSidebarProps) {
@@ -60,6 +62,21 @@ export function LeftSidebar({
   const [formWidth, setFormWidth] = useState("");
   const [formHeight3d, setFormHeight3d] = useState("");
   const [formColor, setFormColor] = useState(DEFAULT_COLOR);
+
+  // Batching-Plant girder config
+  const [batchingDialogOpen, setBatchingDialogOpen] = useState(false);
+  const [batchingGirderCount, setBatchingGirderCount] = useState("1");
+
+  // I-Girder config
+  const [iGirderDialogOpen, setIGirderDialogOpen] = useState(false);
+  const [iGirderLength, setIGirderLength] = useState("");
+  const [iGirderWidth, setIGirderWidth] = useState("");
+  const [iGirderHeight, setIGirderHeight] = useState("");
+  const [iGirderCount, setIGirderCount] = useState("1");
+
+  const batchingPlantItem = EQUIPMENT_ITEMS.find(
+    (i) => i.name === "Batching-Plant",
+  )!;
 
   const handleDragStart = (e: React.DragEvent, item: LibraryItem) => {
     e.dataTransfer.setData("application/yard-element", JSON.stringify(item));
@@ -99,9 +116,52 @@ export function LeftSidebar({
     onLibraryChange(libraryItems.filter((_, i) => i !== idx));
   };
 
+  const handlePlaceBatchingPlant = () => {
+    const count = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
+    const calculatedLength = count * 20;
+    const calculatedWidth = 20;
+    onAddElement({
+      ...batchingPlantItem,
+      height: calculatedLength,
+      width: calculatedWidth,
+    });
+    setBatchingDialogOpen(false);
+    setBatchingGirderCount("1");
+  };
+
+  const handlePlaceIGirders = () => {
+    const length = Number.parseFloat(iGirderLength) || 10;
+    const width = Number.parseFloat(iGirderWidth) || 2;
+    const height3d = Number.parseFloat(iGirderHeight) || 1.5;
+    const count = Math.max(1, Number.parseInt(iGirderCount) || 1);
+
+    const girderTemplate: LibraryItem = {
+      name: "I-Girder",
+      elementType: "custom",
+      width,
+      height: length,
+      height3d,
+      color: "#7c9cbf",
+      defaultStatus: "planned",
+    };
+
+    const items: LibraryItem[] = Array.from({ length: count }, () => ({
+      ...girderTemplate,
+    }));
+
+    onAddMultipleElements(items, 0.5);
+    setIGirderDialogOpen(false);
+    setIGirderLength("");
+    setIGirderWidth("");
+    setIGirderHeight("");
+    setIGirderCount("1");
+  };
+
   const visibleItems = libraryItems.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const girderCount = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
 
   return (
     <aside
@@ -168,6 +228,210 @@ export function LeftSidebar({
         ))}
       </div>
 
+      {/* Permanent Girders Section */}
+      <div className="border-t border-border">
+        <div className="px-3 py-1.5 flex items-center gap-1">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1">
+            Girders
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        {/* I-Girder item */}
+        <div className="mx-2 mb-1">
+          <div className="group flex items-center gap-1 rounded hover:bg-muted/60 transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                setIGirderDialogOpen((prev) => !prev);
+                if (!iGirderDialogOpen) {
+                  setIGirderLength("");
+                  setIGirderWidth("");
+                  setIGirderHeight("");
+                  setIGirderCount("1");
+                }
+              }}
+              className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
+              title="Click to configure and place I-Girders"
+              data-ocid="sidebar.girders.i-girder"
+            >
+              {/* I-Girder icon */}
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                className="flex-shrink-0"
+                fill="none"
+                aria-hidden="true"
+              >
+                <rect
+                  x="1"
+                  y="1"
+                  width="16"
+                  height="3"
+                  rx="0.5"
+                  fill="#7c9cbf"
+                />
+                <rect x="7.5" y="4" width="3" height="10" fill="#7c9cbf" />
+                <rect
+                  x="1"
+                  y="14"
+                  width="16"
+                  height="3"
+                  rx="0.5"
+                  fill="#7c9cbf"
+                />
+              </svg>
+              <div className="min-w-0 text-left flex-1">
+                <div className="text-xs font-medium break-words leading-tight">
+                  I-Girder
+                </div>
+                <div className="text-[10px] text-muted-foreground">
+                  Click to configure
+                </div>
+              </div>
+              <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            </button>
+          </div>
+
+          {/* I-Girder inline config panel */}
+          {iGirderDialogOpen && (
+            <div className="mt-1 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-foreground">
+                  I-Girder Config
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIGirderDialogOpen(false)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+
+              <div className="flex gap-1.5">
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="ig-length"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Length (m)
+                  </label>
+                  <Input
+                    id="ig-length"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 20"
+                    value={iGirderLength}
+                    onChange={(e) => setIGirderLength(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="ig-width"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Width (m)
+                  </label>
+                  <Input
+                    id="ig-width"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 1.5"
+                    value={iGirderWidth}
+                    onChange={(e) => setIGirderWidth(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-1.5">
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="ig-height"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Height (m)
+                  </label>
+                  <Input
+                    id="ig-height"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 1.5"
+                    value={iGirderHeight}
+                    onChange={(e) => setIGirderHeight(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="ig-count"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    No. of Girders
+                  </label>
+                  <Input
+                    id="ig-count"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="e.g. 5"
+                    value={iGirderCount}
+                    onChange={(e) => setIGirderCount(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Preview info */}
+              {(iGirderLength || iGirderWidth) && (
+                <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
+                  <div className="text-[9px] text-muted-foreground">
+                    0.5m spacing between girders
+                  </div>
+                  <div className="text-[10px] font-medium text-foreground">
+                    {Math.max(1, Number.parseInt(iGirderCount) || 1)} girder
+                    {(Number.parseInt(iGirderCount) || 1) > 1 ? "s" : ""} ×{" "}
+                    {iGirderLength || "?"} × {iGirderWidth || "?"}m
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  className="flex-1 h-7 text-[11px]"
+                  onClick={handlePlaceIGirders}
+                  disabled={
+                    !iGirderLength ||
+                    !iGirderWidth ||
+                    !iGirderHeight ||
+                    !iGirderCount
+                  }
+                  data-ocid="igirder.submit_button"
+                >
+                  Place
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-[11px]"
+                  onClick={() => setIGirderDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Permanent Equipment Section */}
       <div className="border-t border-border">
         <div className="px-3 py-1.5 flex items-center gap-1">
@@ -178,33 +442,131 @@ export function LeftSidebar({
           <div className="h-px flex-1 bg-border" />
         </div>
         {EQUIPMENT_ITEMS.map((item, idx) => (
-          <div
-            key={item.name}
-            className="group flex items-center gap-1 mx-2 mb-1 rounded hover:bg-muted/60 transition-colors"
-          >
-            <button
-              type="button"
-              draggable
-              onDragStart={(e) => handleDragStart(e, item)}
-              onClick={() => onAddElement(item)}
-              className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
-              title="Click or drag to place on canvas"
-              data-ocid={`sidebar.equipment.item.${idx + 1}`}
-            >
-              <img
-                src={item.imageUrl}
-                alt={item.name}
-                className="w-6 h-6 object-cover rounded flex-shrink-0 border border-border"
-              />
-              <div className="min-w-0 text-left">
-                <div className="text-xs font-medium break-words leading-tight">
-                  {item.name}
+          <div key={item.name}>
+            <div className="group flex items-center gap-1 mx-2 mb-1 rounded hover:bg-muted/60 transition-colors">
+              {item.name === "Batching-Plant" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBatchingDialogOpen((prev) => !prev);
+                    setBatchingGirderCount("1");
+                  }}
+                  className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
+                  title="Click to configure and place"
+                  data-ocid={`sidebar.equipment.item.${idx + 1}`}
+                >
+                  <img
+                    src={item.imageUrl}
+                    alt={item.name}
+                    className="w-6 h-6 object-cover rounded flex-shrink-0 border border-border"
+                  />
+                  <div className="min-w-0 text-left flex-1">
+                    <div className="text-xs font-medium break-words leading-tight">
+                      {item.name}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      L:{item.height}m × W:{item.width}m
+                    </div>
+                  </div>
+                  <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, item)}
+                  onClick={() => onAddElement(item)}
+                  className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
+                  title="Click or drag to place on canvas"
+                  data-ocid={`sidebar.equipment.item.${idx + 1}`}
+                >
+                  <img
+                    src={item.imageUrl}
+                    alt={item.name}
+                    className="w-6 h-6 object-cover rounded flex-shrink-0 border border-border"
+                  />
+                  <div className="min-w-0 text-left">
+                    <div className="text-xs font-medium break-words leading-tight">
+                      {item.name}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">
+                      L:{item.height}m × W:{item.width}m
+                    </div>
+                  </div>
+                </button>
+              )}
+            </div>
+
+            {/* Batching-Plant inline config panel */}
+            {item.name === "Batching-Plant" && batchingDialogOpen && (
+              <div className="mx-2 mb-2 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-foreground">
+                    Batching-Plant Config
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setBatchingDialogOpen(false)}
+                    className="text-muted-foreground hover:text-foreground"
+                    data-ocid="batching.close_button"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </div>
-                <div className="text-[10px] text-muted-foreground">
-                  L:{item.height}m × W:{item.width}m
+
+                <div className="flex flex-col gap-0.5">
+                  <label
+                    htmlFor="batching-girder-count"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    No. of I-Girders
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={batchingGirderCount}
+                    onChange={(e) => setBatchingGirderCount(e.target.value)}
+                    className="h-7 text-xs"
+                    id="batching-girder-count"
+                    data-ocid="batching.input"
+                  />
+                </div>
+
+                {/* Info panel */}
+                <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
+                  <div className="text-[9px] text-muted-foreground">
+                    1 girder = 35 m³ concrete = 20×20m
+                  </div>
+                  <div className="text-[10px] font-medium text-foreground">
+                    Total space: {girderCount * 20}m × 20m
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Total concrete: {girderCount * 35} m³
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-7 text-[11px]"
+                    onClick={handlePlaceBatchingPlant}
+                    data-ocid="batching.submit_button"
+                  >
+                    Place
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-[11px]"
+                    onClick={() => setBatchingDialogOpen(false)}
+                    data-ocid="batching.cancel_button"
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </div>
-            </button>
+            )}
           </div>
         ))}
       </div>
