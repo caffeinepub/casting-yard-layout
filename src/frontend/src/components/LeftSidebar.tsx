@@ -26,7 +26,7 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     color: "#22c55e",
     defaultStatus: "planned",
     imageUrl:
-      "/assets/uploads/concrete-production-icon_1284-66782-019d2e22-356a-757d-bdba-586e9fe89a1a-1.avif",
+      "/assets/uploads/image-019d2e26-ba9f-715b-8085-8f4fe41ec417-1.png",
   },
 ];
 
