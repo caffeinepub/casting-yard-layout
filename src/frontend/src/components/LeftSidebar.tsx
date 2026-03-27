@@ -99,6 +99,13 @@ export function LeftSidebar({
   const [bayWidth, setBayWidth] = useState("");
   const [bayCount, setBayCount] = useState("1");
 
+  // Formwork config
+  const [formworkDialogOpen, setFormworkDialogOpen] = useState(false);
+  const [formworkLength, setFormworkLength] = useState("");
+  const [formworkWidth, setFormworkWidth] = useState("");
+  const [formworkHeight, setFormworkHeight] = useState("");
+  const [formworkCount, setFormworkCount] = useState("1");
+
   const batchingPlantItem = EQUIPMENT_ITEMS.find(
     (i) => i.name === "Batching-Plant",
   )!;
@@ -184,8 +191,8 @@ export function LeftSidebar({
           ? Math.floor((usableHeight + (girderWidth + 0.5)) / verticalStep)
           : 1;
 
-      // Horizontal start: center girder length within bay
-      const baseX = bay.xPosition + (bay.width - girderLength) / 2;
+      // Horizontal start: 10m from the left edge of the bay
+      const baseX = bay.xPosition + 10;
 
       let placed = 0;
       let colIndex = 0;
@@ -264,6 +271,84 @@ export function LeftSidebar({
     setBayLength("");
     setBayWidth("");
     setBayCount("1");
+  };
+
+  const handlePlaceFormwork = () => {
+    // Check if any Bay has been placed on the canvas
+    const bays = placedElements.filter((el) => el.name === "Bay");
+    if (bays.length === 0) {
+      toast.error("Please place the Bay First");
+      return;
+    }
+
+    const fwLength = Number.parseFloat(formworkLength) || 10;
+    const fwWidth = Number.parseFloat(formworkWidth) || 2;
+    const height3d = Number.parseFloat(formworkHeight) || 1.5;
+    const countPerBay = Math.max(1, Number.parseInt(formworkCount) || 1);
+
+    // Gap between bottom edge of one formwork and top edge of the next = fwWidth + 0.5m
+    // Step from top edge to top edge = fwWidth (element itself) + (fwWidth + 0.5) (gap) = 2*fwWidth + 0.5
+    const verticalStep = 2 * fwWidth + 0.5;
+
+    const allElements: YardElement[] = [];
+
+    for (const bay of bays) {
+      // Usable vertical space inside bay (2m margin each side)
+      const margin = 2;
+      const usableHeight = bay.height - margin * 2;
+
+      // Max formwork that fit vertically in one column
+      const maxPerColumn =
+        usableHeight >= fwWidth
+          ? Math.floor((usableHeight + (fwWidth + 0.5)) / verticalStep)
+          : 1;
+
+      // Horizontal start: 10m from the left edge of the bay
+      const baseX = bay.xPosition + 10;
+
+      let placed = 0;
+      let colIndex = 0;
+
+      while (placed < countPerBay) {
+        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
+
+        // Column x offset: each new column shifts right by fwLength + 2m
+        const colX = baseX + colIndex * (fwLength + 2);
+
+        // Column total height
+        const colHeight =
+          inThisCol * fwWidth + (inThisCol - 1) * (fwWidth + 0.5);
+        const colStartY =
+          bay.yPosition + margin + (usableHeight - colHeight) / 2;
+
+        for (let i = 0; i < inThisCol; i++) {
+          allElements.push({
+            id: BigInt(Date.now()) * 100000n + BigInt(allElements.length),
+            name: "Box-I-Girder-Formwork",
+            elementType: "custom",
+            width: fwLength,
+            height: fwWidth,
+            xPosition: colX,
+            yPosition: colStartY + i * verticalStep,
+            rotationAngle: 0,
+            color: "#a87c4f",
+            status: "planned",
+            height3d,
+            shape: "rectangle",
+          });
+        }
+
+        placed += inThisCol;
+        colIndex++;
+      }
+    }
+
+    onAddRawElements(allElements);
+    setFormworkDialogOpen(false);
+    setFormworkLength("");
+    setFormworkWidth("");
+    setFormworkHeight("");
+    setFormworkCount("1");
   };
 
   const visibleItems = libraryItems.filter((i) =>
@@ -718,6 +803,217 @@ export function LeftSidebar({
                   variant="outline"
                   className="flex-1 h-7 text-[11px]"
                   onClick={() => setBayDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Permanent Formwork Section */}
+      <div className="border-t border-border">
+        <div className="px-3 py-1.5 flex items-center gap-1">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1">
+            Formwork
+          </span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        {/* Box Type I-Girder-Formwork item */}
+        <div className="mx-2 mb-1">
+          <div className="group flex items-center gap-1 rounded hover:bg-muted/60 transition-colors">
+            <button
+              type="button"
+              onClick={() => {
+                setFormworkDialogOpen((prev) => !prev);
+                if (!formworkDialogOpen) {
+                  setFormworkLength("");
+                  setFormworkWidth("");
+                  setFormworkHeight("");
+                  setFormworkCount("1");
+                }
+              }}
+              className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
+              title="Click to configure and place Formwork"
+              data-ocid="sidebar.formwork.box_igirder"
+            >
+              {/* Simple box icon */}
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 18 18"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                role="img"
+                aria-label="Box I-Girder Formwork"
+              >
+                <rect
+                  x="1"
+                  y="5"
+                  width="16"
+                  height="8"
+                  rx="0"
+                  fill="#a87c4f"
+                  stroke="#7a5a30"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="1"
+                  y1="9"
+                  x2="17"
+                  y2="9"
+                  stroke="#7a5a30"
+                  strokeWidth="0.75"
+                  strokeDasharray="2 1"
+                />
+              </svg>
+              <div className="flex flex-col items-start min-w-0 flex-1">
+                <span className="text-[11px] font-medium text-foreground leading-tight break-words">
+                  Box Type I-Girder-Formwork
+                </span>
+                <div className="text-[9px] text-muted-foreground">
+                  Click to configure
+                </div>
+              </div>
+              <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            </button>
+          </div>
+
+          {/* Formwork inline config panel */}
+          {formworkDialogOpen && (
+            <div className="mt-1 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-foreground">
+                  Formwork Config
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFormworkDialogOpen(false)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+
+              <div className="flex gap-1.5">
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="fw-length"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Length (m)
+                  </label>
+                  <Input
+                    id="fw-length"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 20"
+                    value={formworkLength}
+                    onChange={(e) => setFormworkLength(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="fw-width"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Width (m)
+                  </label>
+                  <Input
+                    id="fw-width"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 1.5"
+                    value={formworkWidth}
+                    onChange={(e) => setFormworkWidth(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-1.5">
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="fw-height"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Height (m)
+                  </label>
+                  <Input
+                    id="fw-height"
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    placeholder="e.g. 1.5"
+                    value={formworkHeight}
+                    onChange={(e) => setFormworkHeight(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <label
+                    htmlFor="fw-count"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    No. of Formwork
+                  </label>
+                  <Input
+                    id="fw-count"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="e.g. 5"
+                    value={formworkCount}
+                    onChange={(e) => setFormworkCount(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Preview info */}
+              {(formworkLength || formworkWidth) && (
+                <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
+                  <div className="text-[9px] text-muted-foreground">
+                    Horizontal ·{" "}
+                    {(
+                      (Number.parseFloat(formworkWidth) || 0) * 2 +
+                      0.5
+                    ).toFixed(1)}
+                    m vertical spacing
+                  </div>
+                  <div className="text-[10px] font-medium text-foreground">
+                    {Math.max(1, Number.parseInt(formworkCount) || 1)} formwork
+                    × {formworkLength || "?"}m × {formworkWidth || "?"}m
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  className="flex-1 h-7 text-[11px]"
+                  onClick={handlePlaceFormwork}
+                  disabled={
+                    !formworkLength ||
+                    !formworkWidth ||
+                    !formworkHeight ||
+                    !formworkCount
+                  }
+                  data-ocid="formwork.submit_button"
+                >
+                  Place
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-7 text-[11px]"
+                  onClick={() => setFormworkDialogOpen(false)}
                 >
                   Cancel
                 </Button>
