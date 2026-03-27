@@ -17,6 +17,17 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     imageUrl:
       "/assets/uploads/istockphoto-464854298-1024x1024-019d2b15-f4f1-70fa-aca4-80e5b8dbc76f-1.png",
   },
+  {
+    name: "Batching Plant",
+    elementType: "custom",
+    width: 30,
+    height: 30,
+    height3d: 12,
+    color: "#22c55e",
+    defaultStatus: "planned",
+    imageUrl:
+      "/assets/uploads/concrete-production-icon_1284-66782-019d2e22-356a-757d-bdba-586e9fe89a1a-1.avif",
+  },
 ];
 
 interface LeftSidebarProps {
