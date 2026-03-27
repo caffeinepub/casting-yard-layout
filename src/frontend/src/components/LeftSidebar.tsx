@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { useState } from "react";
-import type { LibraryItem } from "../types/yard";
+import { toast } from "sonner";
+import type { LibraryItem, YardElement } from "../types/yard";
 
 const DEFAULT_COLOR = "#4f86c6";
 
@@ -53,19 +54,23 @@ interface LeftSidebarProps {
       startY?: number;
     },
   ) => void;
+  onAddRawElements: (elements: YardElement[]) => void;
   libraryItems: LibraryItem[];
   onLibraryChange: (items: LibraryItem[]) => void;
   yardLength: number;
   yardWidth: number;
+  placedElements: YardElement[];
 }
 
 export function LeftSidebar({
   onAddElement,
   onAddMultipleElements,
+  onAddRawElements,
   libraryItems,
   onLibraryChange,
   yardLength,
   yardWidth,
+  placedElements,
 }: LeftSidebarProps) {
   const [search, setSearch] = useState("");
 
@@ -150,31 +155,76 @@ export function LeftSidebar({
   };
 
   const handlePlaceIGirders = () => {
-    // length = horizontal dimension (runs along X axis)
-    // width = vertical/spacing dimension (runs along Y axis)
+    // Check if any Bay has been placed on the canvas
+    const bays = placedElements.filter((el) => el.name === "Bay");
+    if (bays.length === 0) {
+      toast.error("Please place the Bay First");
+      return;
+    }
+
     const girderLength = Number.parseFloat(iGirderLength) || 10;
     const girderWidth = Number.parseFloat(iGirderWidth) || 2;
     const height3d = Number.parseFloat(iGirderHeight) || 1.5;
-    const count = Math.max(1, Number.parseInt(iGirderCount) || 1);
+    const countPerBay = Math.max(1, Number.parseInt(iGirderCount) || 1);
 
-    // In the canvas: element.width = horizontal span, element.height = vertical span
-    // I-Girders are horizontal: width = girder length, height = girder width
-    const girderTemplate: LibraryItem = {
-      name: "I-Girder",
-      elementType: "custom",
-      width: girderLength, // horizontal (length of girder)
-      height: girderWidth, // vertical (width of girder)
-      height3d,
-      color: "#7c9cbf",
-      defaultStatus: "planned",
-    };
+    // Gap between bottom edge of one girder and top edge of the next = girderWidth + 0.5m
+    // So step from top edge to top edge = girderWidth (girder itself) + (girderWidth + 0.5) (gap) = 2*girderWidth + 0.5
+    const verticalStep = 2 * girderWidth + 0.5;
 
-    const items: LibraryItem[] = Array.from({ length: count }, () => ({
-      ...girderTemplate,
-    }));
+    const allElements: YardElement[] = [];
 
-    // Place vertically: spacing between girders = girder width + 0.5m
-    onAddMultipleElements(items, girderWidth + 0.5, "vertical");
+    for (const bay of bays) {
+      // Usable vertical space inside bay (2m margin each side)
+      const margin = 2;
+      const usableHeight = bay.height - margin * 2;
+
+      // Max girders that fit vertically in one column
+      const maxPerColumn =
+        usableHeight >= girderWidth
+          ? Math.floor((usableHeight + (girderWidth + 0.5)) / verticalStep)
+          : 1;
+
+      // Horizontal start: center girder length within bay
+      const baseX = bay.xPosition + (bay.width - girderLength) / 2;
+
+      let placed = 0;
+      let colIndex = 0;
+
+      while (placed < countPerBay) {
+        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
+
+        // Column x offset: each new column shifts right by girderLength + 2m
+        const colX = baseX + colIndex * (girderLength + 2);
+
+        // Column total height: each girder takes girderWidth, gaps between them are girderWidth + 0.5
+        const colHeight =
+          inThisCol * girderWidth + (inThisCol - 1) * (girderWidth + 0.5);
+        const colStartY =
+          bay.yPosition + margin + (usableHeight - colHeight) / 2;
+
+        for (let i = 0; i < inThisCol; i++) {
+          allElements.push({
+            id: BigInt(Date.now()) * 100000n + BigInt(allElements.length),
+            name: "I-Girder",
+            elementType: "custom",
+            width: girderLength,
+            height: girderWidth,
+            xPosition: colX,
+            yPosition: colStartY + i * verticalStep,
+            rotationAngle: 0,
+            color: "#7c9cbf",
+            status: "planned",
+            height3d,
+            shape: "rectangle",
+          });
+        }
+
+        placed += inThisCol;
+        colIndex++;
+      }
+    }
+
+    onAddRawElements(allElements);
     setIGirderDialogOpen(false);
     setIGirderLength("");
     setIGirderWidth("");
@@ -452,8 +502,11 @@ export function LeftSidebar({
               {(iGirderLength || iGirderWidth) && (
                 <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
                   <div className="text-[9px] text-muted-foreground">
-                    Horizontal · {(Number.parseFloat(iGirderWidth) || 0) + 0.5}m
-                    vertical spacing
+                    Horizontal ·{" "}
+                    {((Number.parseFloat(iGirderWidth) || 0) * 2 + 0.5).toFixed(
+                      1,
+                    )}
+                    m vertical spacing (girder + gap)
                   </div>
                   <div className="text-[10px] font-medium text-foreground">
                     {Math.max(1, Number.parseInt(iGirderCount) || 1)} girder

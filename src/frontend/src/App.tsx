@@ -266,6 +266,20 @@ export default function App() {
     [pushHistory, refreshUndoRedo],
   );
 
+  const handleAddRawElements = useCallback(
+    (newEls: YardElement[]) => {
+      if (newEls.length === 0) return;
+      pushHistory();
+      setElements((prev) => [...prev, ...newEls]);
+      setSelectedIds(new Set(newEls.map((el) => el.id)));
+      refreshUndoRedo();
+      toast.success(
+        `Added ${newEls.length} I-Girder${newEls.length !== 1 ? "s" : ""} to yard`,
+      );
+    },
+    [pushHistory, refreshUndoRedo],
+  );
+
   const handleDropElement = useCallback(
     (item: LibraryItem, x: number, y: number) => {
       pushHistory();
@@ -817,10 +831,12 @@ export default function App() {
         <LeftSidebar
           onAddElement={handleAddElement}
           onAddMultipleElements={handleAddMultipleElements}
+          onAddRawElements={handleAddRawElements}
           libraryItems={libraryItems}
           onLibraryChange={setLibraryItems}
           yardLength={yardLength}
           yardWidth={yardWidth}
+          placedElements={elements}
         />
 
         {viewMode === "2d" ? (
