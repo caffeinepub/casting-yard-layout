@@ -17,16 +17,6 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     imageUrl:
       "/assets/uploads/istockphoto-464854298-1024x1024-019d2b15-f4f1-70fa-aca4-80e5b8dbc76f-1.png",
   },
-  {
-    name: "Crane 2",
-    elementType: "custom",
-    width: 5,
-    height: 30,
-    color: "#888888",
-    defaultStatus: "planned",
-    imageUrl:
-      "/assets/uploads/istockphoto-464854298-1024x1024-019d2b1a-b670-751f-ae4d-2fb3b2a65a43-2.png",
-  },
 ];
 
 interface LeftSidebarProps {
