@@ -174,9 +174,9 @@ export function LeftSidebar({
     const height3d = Number.parseFloat(iGirderHeight) || 1.5;
     const countPerBay = Math.max(1, Number.parseInt(iGirderCount) || 1);
 
-    // Gap between bottom edge of one girder and top edge of the next = girderWidth + 0.5m
-    // So step from top edge to top edge = girderWidth (girder itself) + (girderWidth + 0.5) (gap) = 2*girderWidth + 0.5
-    const verticalStep = 2 * girderWidth + 0.5;
+    // Gap between bottom edge of one girder and top edge of the next = 0.5m
+    // Step from top edge to top edge = girderWidth (girder itself) + 0.5m (gap)
+    const verticalStep = girderWidth + 0.5;
 
     const allElements: YardElement[] = [];
 
@@ -188,7 +188,7 @@ export function LeftSidebar({
       // Max girders that fit vertically in one column
       const maxPerColumn =
         usableHeight >= girderWidth
-          ? Math.floor((usableHeight + (girderWidth + 0.5)) / verticalStep)
+          ? Math.floor((usableHeight + 0.5) / verticalStep)
           : 1;
 
       // Horizontal start: 10m from the left edge of the bay
@@ -203,9 +203,8 @@ export function LeftSidebar({
         // Column x offset: each new column shifts right by girderLength + 2m
         const colX = baseX + colIndex * (girderLength + 2);
 
-        // Column total height: each girder takes girderWidth, gaps between them are girderWidth + 0.5
-        const colHeight =
-          inThisCol * girderWidth + (inThisCol - 1) * (girderWidth + 0.5);
+        // Column total height: each girder takes girderWidth, gaps between them are 0.5m
+        const colHeight = inThisCol * girderWidth + (inThisCol - 1) * 0.5;
         const colStartY =
           bay.yPosition + margin + (usableHeight - colHeight) / 2;
 
@@ -286,9 +285,9 @@ export function LeftSidebar({
     const height3d = Number.parseFloat(formworkHeight) || 1.5;
     const countPerBay = Math.max(1, Number.parseInt(formworkCount) || 1);
 
-    // Gap between bottom edge of one formwork and top edge of the next = fwWidth + 0.5m
-    // Step from top edge to top edge = fwWidth (element itself) + (fwWidth + 0.5) (gap) = 2*fwWidth + 0.5
-    const verticalStep = 2 * fwWidth + 0.5;
+    // Gap between bottom edge of one formwork and top edge of the next = 0.5m
+    // Step from top edge to top edge = fwWidth (element itself) + 0.5m (gap)
+    const verticalStep = fwWidth + 0.5;
 
     const allElements: YardElement[] = [];
 
@@ -300,7 +299,7 @@ export function LeftSidebar({
       // Max formwork that fit vertically in one column
       const maxPerColumn =
         usableHeight >= fwWidth
-          ? Math.floor((usableHeight + (fwWidth + 0.5)) / verticalStep)
+          ? Math.floor((usableHeight + 0.5) / verticalStep)
           : 1;
 
       // Horizontal start: 10m from the left edge of the bay
@@ -316,8 +315,7 @@ export function LeftSidebar({
         const colX = baseX + colIndex * (fwLength + 2);
 
         // Column total height
-        const colHeight =
-          inThisCol * fwWidth + (inThisCol - 1) * (fwWidth + 0.5);
+        const colHeight = inThisCol * fwWidth + (inThisCol - 1) * 0.5;
         const colStartY =
           bay.yPosition + margin + (usableHeight - colHeight) / 2;
 
@@ -587,11 +585,7 @@ export function LeftSidebar({
               {(iGirderLength || iGirderWidth) && (
                 <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
                   <div className="text-[9px] text-muted-foreground">
-                    Horizontal ·{" "}
-                    {((Number.parseFloat(iGirderWidth) || 0) * 2 + 0.5).toFixed(
-                      1,
-                    )}
-                    m vertical spacing (girder + gap)
+                    Horizontal · 0.5m gap between girders
                   </div>
                   <div className="text-[10px] font-medium text-foreground">
                     {Math.max(1, Number.parseInt(iGirderCount) || 1)} girder
@@ -980,12 +974,7 @@ export function LeftSidebar({
               {(formworkLength || formworkWidth) && (
                 <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
                   <div className="text-[9px] text-muted-foreground">
-                    Horizontal ·{" "}
-                    {(
-                      (Number.parseFloat(formworkWidth) || 0) * 2 +
-                      0.5
-                    ).toFixed(1)}
-                    m vertical spacing
+                    Horizontal · 0.5m gap between formwork
                   </div>
                   <div className="text-[10px] font-medium text-foreground">
                     {Math.max(1, Number.parseInt(formworkCount) || 1)} formwork
