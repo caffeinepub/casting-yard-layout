@@ -28,6 +28,16 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     imageUrl:
       "/assets/uploads/image-019d2e26-ba9f-715b-8085-8f4fe41ec417-1.png",
   },
+  {
+    name: "Road",
+    elementType: "custom",
+    width: 10,
+    height: 10,
+    height3d: 0.1,
+    color: "#555555",
+    defaultStatus: "planned",
+    imageUrl: "/assets/uploads/raod-019d2e6f-b1b6-7075-ab34-f341729a23a7-1.png",
+  },
 ];
 
 interface LeftSidebarProps {

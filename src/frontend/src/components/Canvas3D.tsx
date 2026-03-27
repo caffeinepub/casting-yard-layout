@@ -270,14 +270,14 @@ function Scene({
       </Suspense>
 
       <OrbitControls
-        enableRotate={false}
+        enableRotate={true}
         enablePan={true}
         enableZoom={true}
         minZoom={0.5}
         maxZoom={8}
         mouseButtons={{
           LEFT: THREE.MOUSE.PAN,
-          MIDDLE: THREE.MOUSE.DOLLY,
+          MIDDLE: THREE.MOUSE.ROTATE,
           RIGHT: THREE.MOUSE.PAN,
         }}
       />
@@ -315,7 +315,7 @@ export function Canvas3D({
         />
       </Canvas>
       <div className="absolute bottom-3 right-3 bg-black/40 text-white text-xs px-2 py-1 rounded pointer-events-none">
-        Pan: drag · Zoom: scroll
+        Pan: drag · Zoom: scroll · Rotate: middle mouse
       </div>
     </div>
   );

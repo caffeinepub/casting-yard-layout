@@ -3,11 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Canvas2D } from "./components/Canvas2D";
 import { Canvas3D } from "./components/Canvas3D";
+import { Dashboard } from "./components/Dashboard";
 import { Header } from "./components/Header";
 import { LeftSidebar } from "./components/LeftSidebar";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { Toolbar } from "./components/Toolbar";
+import { useProjects } from "./hooks/useProjects";
 import { useSaveProject } from "./hooks/useQueries";
+import type { SavedProject } from "./types/project";
 import type {
   LibraryItem,
   ScaleOption,
@@ -35,13 +38,16 @@ interface HistorySnapshot {
 }
 
 export default function App() {
+  const [screen, setScreen] = useState<"dashboard" | "editor">("dashboard");
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
   const [elements, setElements] = useState<YardElement[]>([]);
   const [textLabels, setTextLabels] = useState<TextLabel[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<bigint>>(new Set());
   const [activeTool, setActiveTool] = useState<ToolMode>("select");
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [scale, setScale] = useState<ScaleOption>("1:200");
-  const [projectName, setProjectName] = useState("Main Casting Yard");
+  const [projectName, setProjectName] = useState("New Casting Yard");
   const [yardLength, setYardLength] = useState(540);
   const [yardWidth, setYardWidth] = useState(540);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
@@ -57,6 +63,12 @@ export default function App() {
   const textLabelsRef = useRef(textLabels);
   elementsRef.current = elements;
   textLabelsRef.current = textLabels;
+
+  const {
+    projects,
+    saveProject: saveToLocalStorage,
+    deleteProject,
+  } = useProjects();
 
   const pushHistory = useCallback(() => {
     const snapshot: HistorySnapshot = {
@@ -326,8 +338,9 @@ export default function App() {
     );
   }, [saveProject, projectName, elements]);
 
-  const handleSaveFile = useCallback(() => {
-    const data = {
+  // Build the data object for saving
+  const buildSaveData = useCallback(() => {
+    return {
       version: 3,
       projectName,
       yardLength,
@@ -336,17 +349,79 @@ export default function App() {
       elements: elements.map((el) => ({ ...el, id: el.id.toString() })),
       textLabels: textLabels.map((l) => ({ ...l, id: l.id.toString() })),
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
+  }, [projectName, yardLength, yardWidth, libraryItems, elements, textLabels]);
+
+  const handleSaveFile = useCallback(() => {
+    const data = buildSaveData();
+    const jsonStr = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonStr], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `${projectName.replace(/\s+/g, "_")}.cyld`;
     a.click();
     URL.revokeObjectURL(url);
+
+    // Also save to localStorage
+    const projId = activeProjectId ?? crypto.randomUUID();
+    if (!activeProjectId) setActiveProjectId(projId);
+    saveToLocalStorage({
+      id: projId,
+      projectName,
+      yardLength,
+      yardWidth,
+      elementCount: elements.length,
+      lastModified: new Date().toISOString(),
+      data: jsonStr,
+    });
+
     toast.success("Layout saved to file");
-  }, [projectName, yardLength, yardWidth, libraryItems, elements, textLabels]);
+  }, [
+    buildSaveData,
+    projectName,
+    yardLength,
+    yardWidth,
+    elements,
+    activeProjectId,
+    saveToLocalStorage,
+  ]);
+
+  const loadFromRaw = useCallback((raw: string, inferredName?: string) => {
+    try {
+      const data = JSON.parse(raw);
+      if (data.projectName) setProjectName(data.projectName);
+      else if (inferredName) setProjectName(inferredName);
+      if (data.yardLength) setYardLength(data.yardLength);
+      else if (data.yardSize) setYardLength(data.yardSize);
+      if (data.yardWidth) setYardWidth(data.yardWidth);
+      else if (data.yardSize) setYardWidth(data.yardSize);
+      if (data.libraryItems) setLibraryItems(data.libraryItems);
+      if (data.elements) {
+        const loaded = data.elements.map((el: any) => ({
+          ...el,
+          id: BigInt(el.id),
+        }));
+        setElements(loaded);
+        if (loaded.length > 0) {
+          const last = loaded[loaded.length - 1] as YardElement;
+          lastPlacedRef.current = {
+            x: last.xPosition,
+            y: last.yPosition,
+            width: last.width,
+          };
+        }
+      }
+      if (data.textLabels) {
+        setTextLabels(
+          data.textLabels.map((l: any) => ({ ...l, id: BigInt(l.id) })),
+        );
+      }
+      setSelectedIds(new Set());
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const handleLoadFile = useCallback(() => {
     const input = document.createElement("input");
@@ -357,48 +432,104 @@ export default function App() {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        try {
-          const data = JSON.parse(ev.target?.result as string);
-          if (data.projectName) setProjectName(data.projectName);
-          // Support old single yardSize and new yardLength/yardWidth
-          if (data.yardLength) setYardLength(data.yardLength);
-          else if (data.yardSize) setYardLength(data.yardSize);
-          if (data.yardWidth) setYardWidth(data.yardWidth);
-          else if (data.yardSize) setYardWidth(data.yardSize);
-          if (data.libraryItems) setLibraryItems(data.libraryItems);
-          if (data.elements) {
-            const loaded = data.elements.map((el: any) => ({
-              ...el,
-              id: BigInt(el.id),
-            }));
-            setElements(loaded);
-            if (loaded.length > 0) {
-              const last = loaded[loaded.length - 1] as YardElement;
-              lastPlacedRef.current = {
-                x: last.xPosition,
-                y: last.yPosition,
-                width: last.width,
-              };
-            }
-          }
-          if (data.textLabels) {
-            setTextLabels(
-              data.textLabels.map((l: any) => ({ ...l, id: BigInt(l.id) })),
-            );
-          }
-          setSelectedIds(new Set());
+        const raw = ev.target?.result as string;
+        const ok = loadFromRaw(raw, file.name.replace(/\.cyld$/, ""));
+        if (ok) {
+          // Save to localStorage
+          const data = JSON.parse(raw);
+          const projId = crypto.randomUUID();
+          setActiveProjectId(projId);
+          saveToLocalStorage({
+            id: projId,
+            projectName: data.projectName ?? file.name.replace(/\.cyld$/, ""),
+            yardLength: data.yardLength ?? data.yardSize ?? 540,
+            yardWidth: data.yardWidth ?? data.yardSize ?? 540,
+            elementCount: Array.isArray(data.elements)
+              ? data.elements.length
+              : 0,
+            lastModified: new Date().toISOString(),
+            data: raw,
+          });
           toast.success("Layout loaded successfully");
-        } catch {
-          toast.error("Failed to load file — invalid format");
+        } else {
+          toast.error("Failed to load file \u2014 invalid format");
         }
       };
       reader.readAsText(file);
     };
     input.click();
+  }, [loadFromRaw, saveToLocalStorage]);
+
+  // Dashboard handlers
+  const handleCreateNew = useCallback(() => {
+    setElements([]);
+    setTextLabels([]);
+    setLibraryItems([]);
+    setSelectedIds(new Set());
+    setProjectName("New Casting Yard");
+    setYardLength(540);
+    setYardWidth(540);
+    setActiveProjectId(null);
+    lastPlacedRef.current = null;
+    undoStack.current = [];
+    redoStack.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+    setScreen("editor");
+  }, []);
+
+  const handleOpenProject = useCallback(
+    (project: SavedProject) => {
+      const ok = loadFromRaw(project.data, project.projectName);
+      if (ok) {
+        setActiveProjectId(project.id);
+        // Also save/update in localStorage in case it was loaded from file
+        saveToLocalStorage({
+          ...project,
+          lastModified: new Date().toISOString(),
+        });
+        setScreen("editor");
+        toast.success(`Opened "${project.projectName}"`);
+      } else {
+        // Even if data is empty/invalid, open blank editor with project name
+        setProjectName(project.projectName);
+        setYardLength(project.yardLength);
+        setYardWidth(project.yardWidth);
+        setElements([]);
+        setTextLabels([]);
+        setLibraryItems([]);
+        setSelectedIds(new Set());
+        setActiveProjectId(project.id);
+        setScreen("editor");
+      }
+    },
+    [loadFromRaw, saveToLocalStorage],
+  );
+
+  const handleOpenSampleProject = useCallback(
+    async (url: string, name: string) => {
+      try {
+        const resp = await fetch(url);
+        const text = await resp.text();
+        const raw = atob(text.trim());
+        loadFromRaw(raw, name);
+        setActiveProjectId(null);
+        setScreen("editor");
+        toast.success("Opened sample layout");
+      } catch {
+        toast.error("Failed to load sample layout");
+      }
+    },
+    [loadFromRaw],
+  );
+
+  const handleGoToDashboard = useCallback(() => {
+    setScreen("dashboard");
   }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (screen !== "editor") return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
@@ -497,9 +628,31 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedIds, handleUndo, handleRedo, pushHistory, refreshUndoRedo]);
+  }, [
+    screen,
+    selectedIds,
+    handleUndo,
+    handleRedo,
+    pushHistory,
+    refreshUndoRedo,
+  ]);
 
   const firstSelectedId = selectedIds.size > 0 ? [...selectedIds][0] : null;
+
+  if (screen === "dashboard") {
+    return (
+      <>
+        <Toaster />
+        <Dashboard
+          projects={projects}
+          onCreateNew={handleCreateNew}
+          onOpenProject={handleOpenProject}
+          onDeleteProject={deleteProject}
+          onOpenSample={handleOpenSampleProject}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background">
@@ -516,6 +669,7 @@ export default function App() {
           "South Yard",
           "Test Yard",
         ]}
+        onGoToDashboard={handleGoToDashboard}
       />
 
       {/* Secondary title row */}
@@ -617,7 +771,7 @@ export default function App() {
         style={{ backgroundColor: "oklch(0.96 0.006 240)" }}
       >
         <span className="text-[10px] text-muted-foreground">
-          © {new Date().getFullYear()}. Built with love using{" "}
+          \u00a9 {new Date().getFullYear()}. Built with love using{" "}
           <a
             href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
             target="_blank"

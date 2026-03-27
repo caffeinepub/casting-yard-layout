@@ -34,6 +34,7 @@ const SCALE_PX_PER_M: Record<ScaleOption, number> = {
 };
 
 const GRID_STEP = 10; // meters
+const SNAP_THRESHOLD = 3; // meters
 
 const HANDLE_POSITIONS = ["tl", "tr", "bl", "br"] as const;
 
@@ -184,6 +185,9 @@ export function Canvas2D({
     startY: number;
     origPan: { x: number; y: number };
   } | null>(null);
+
+  // Snap highlight state
+  const [snapTargetId, setSnapTargetId] = useState<bigint | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -447,11 +451,76 @@ export function Canvas2D({
           }
           onMoveElements(moves);
         } else {
-          onMoveElement(
-            drag.id,
-            Math.max(0, drag.origX + dx),
-            Math.max(0, drag.origY + dy),
-          );
+          // Single element drag — apply snap-to-similar logic
+          const draggedEl = elements.find((el) => el.id === drag.id);
+          let newX = Math.max(0, drag.origX + dx);
+          let newY = Math.max(0, drag.origY + dy);
+          let snapId: bigint | null = null;
+
+          if (draggedEl) {
+            const dL = newX; // dragged left edge
+            const dR = newX + draggedEl.width; // dragged right edge
+            const dT = newY; // dragged top edge
+            const dB = newY + draggedEl.height; // dragged bottom edge
+
+            let bestXDist = SNAP_THRESHOLD;
+            let snapX: number | null = null;
+            let bestYDist = SNAP_THRESHOLD;
+            let snapY: number | null = null;
+            let candidateSnapId: bigint | null = null;
+
+            for (const other of elements) {
+              if (other.id === drag.id) continue;
+              if (other.name !== draggedEl.name) continue;
+
+              const oL = other.xPosition;
+              const oR = other.xPosition + other.width;
+              const oT = other.yPosition;
+              const oB = other.yPosition + other.height;
+
+              // X-axis snaps
+              const xCandidates: [number, number][] = [
+                [Math.abs(dL - oR), oR], // left edge → other's right
+                [Math.abs(dR - oL), oL - draggedEl.width], // right edge → other's left
+                [Math.abs(dL - oL), oL], // align left edges
+                [Math.abs(dR - oR), oR - draggedEl.width], // align right edges
+              ];
+              for (const [dist, snapVal] of xCandidates) {
+                if (dist < bestXDist) {
+                  bestXDist = dist;
+                  snapX = snapVal;
+                  candidateSnapId = other.id;
+                }
+              }
+
+              // Y-axis snaps
+              const yCandidates: [number, number][] = [
+                [Math.abs(dT - oB), oB], // top edge → other's bottom
+                [Math.abs(dB - oT), oT - draggedEl.height], // bottom edge → other's top
+                [Math.abs(dT - oT), oT], // align top edges
+                [Math.abs(dB - oB), oB - draggedEl.height], // align bottom edges
+              ];
+              for (const [dist, snapVal] of yCandidates) {
+                if (dist < bestYDist) {
+                  bestYDist = dist;
+                  snapY = snapVal;
+                  if (candidateSnapId === null) candidateSnapId = other.id;
+                }
+              }
+            }
+
+            if (snapX !== null) {
+              newX = Math.max(0, snapX);
+              snapId = candidateSnapId;
+            }
+            if (snapY !== null) {
+              newY = Math.max(0, snapY);
+              snapId = candidateSnapId;
+            }
+          }
+
+          setSnapTargetId(snapId);
+          onMoveElement(drag.id, newX, newY);
         }
       } else if (rotateDrag) {
         const pt = getSVGPoint(e);
@@ -475,6 +544,8 @@ export function Canvas2D({
       if (e.button === 1) {
         panDrag.current = null;
       }
+
+      setSnapTargetId(null);
 
       if (marquee) {
         const mx = Math.min(marquee.startX, marquee.currentX);
@@ -681,6 +752,7 @@ export function Canvas2D({
             const ew = el.width * pxPerM;
             const eh = Math.max(el.height * pxPerM, 6);
             const isSelected = selectedIds.has(el.id);
+            const isSnapTarget = snapTargetId === el.id;
             const cx = ex + ew / 2;
             const cy = ey + eh / 2;
 
@@ -758,6 +830,20 @@ export function Canvas2D({
                 >
                   {el.name.split(" ").slice(-1)[0]}
                 </text>
+                {/* Snap highlight */}
+                {isSnapTarget && (
+                  <rect
+                    x={ex - 2}
+                    y={ey - 2}
+                    width={ew + 4}
+                    height={eh + 4}
+                    fill="none"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    strokeDasharray="4 2"
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
                 {isSelected && (
                   <>
                     {HANDLE_POSITIONS.map((pos) => {

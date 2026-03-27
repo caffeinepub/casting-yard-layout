@@ -5,7 +5,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Loader2, Save } from "lucide-react";
+import { ChevronDown, Home, Loader2, Save } from "lucide-react";
 
 interface HeaderProps {
   projectName: string;
@@ -13,6 +13,7 @@ interface HeaderProps {
   onSave: () => void;
   isSaving: boolean;
   projects: string[];
+  onGoToDashboard?: () => void;
 }
 
 export function Header({
@@ -21,6 +22,7 @@ export function Header({
   onSave,
   isSaving,
   projects,
+  onGoToDashboard,
 }: HeaderProps) {
   return (
     <header
@@ -30,6 +32,17 @@ export function Header({
     >
       {/* Brand - icon on the left */}
       <div className="flex items-center gap-2">
+        {onGoToDashboard && (
+          <button
+            type="button"
+            onClick={onGoToDashboard}
+            className="flex items-center justify-center w-8 h-8 rounded text-white/60 hover:text-white hover:bg-white/10 transition-colors mr-1"
+            title="Back to Dashboard"
+            data-ocid="header.dashboard.link"
+          >
+            <Home className="h-4 w-4" />
+          </button>
+        )}
         <img
           src="/assets/uploads/7b9257d0-0137-4292-9b25-8cab2885d15a-019d2dc5-66ab-77ca-ad8e-7349102dd8ed-1.png"
           alt="Casting Yard Pro Icon"
@@ -47,6 +60,7 @@ export function Header({
           <button
             type="button"
             key={item}
+            onClick={item === "Dashboard" ? onGoToDashboard : undefined}
             className="px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 rounded transition-colors"
             data-ocid={`nav.${item.toLowerCase()}.link`}
           >
