@@ -5,7 +5,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Grid3x3, Loader2, Save } from "lucide-react";
+import { ChevronDown, Loader2, Save } from "lucide-react";
 
 interface HeaderProps {
   projectName: string;
@@ -28,11 +28,16 @@ export function Header({
       style={{ backgroundColor: "oklch(0.22 0.028 220)" }}
       data-ocid="header.section"
     >
-      {/* Brand */}
+      {/* Brand - icon on the left */}
       <div className="flex items-center gap-2">
-        <Grid3x3 className="h-5 w-5" style={{ color: "#1E7ACB" }} />
+        <img
+          src="/assets/uploads/7b9257d0-0137-4292-9b25-8cab2885d15a-019d2dc5-66ab-77ca-ad8e-7349102dd8ed-1.png"
+          alt="Casting Yard Pro Icon"
+          className="h-9 w-9 object-contain rounded"
+          data-ocid="header.app_icon.image"
+        />
         <span className="text-white font-bold text-base tracking-wider">
-          CASTYARDPRO
+          Casting Yard Pro
         </span>
       </div>
 
@@ -50,7 +55,7 @@ export function Header({
         ))}
       </nav>
 
-      {/* Right side: Project selector + Save + Logo + Trademark */}
+      {/* Right side: Project selector + Save + PCEPL Logo + Trademark */}
       <div className="flex items-center gap-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -101,7 +106,7 @@ export function Header({
           <img
             src="/assets/uploads/image-019d2ab3-dddb-71b9-873f-0a7d4163888c-1.png"
             alt="PCEPL Logo"
-            className="h-9 w-auto object-contain rounded"
+            className="h-10 w-auto object-contain rounded"
             data-ocid="header.pcepl_logo.image"
           />
           <span

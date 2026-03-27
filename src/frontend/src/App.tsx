@@ -24,7 +24,7 @@ function genId(): bigint {
   return nextId;
 }
 
-const PLACEMENT_SPACING = 2; // meters gap between auto-placed elements
+const PLACEMENT_SPACING = 2;
 const PLACEMENT_START_X = 5;
 const PLACEMENT_START_Y = 5;
 const MAX_HISTORY = 50;
@@ -42,7 +42,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [scale, setScale] = useState<ScaleOption>("1:200");
   const [projectName, setProjectName] = useState("Main Casting Yard");
-  const [yardSize, setYardSize] = useState(200);
+  const [yardLength, setYardLength] = useState(540);
+  const [yardWidth, setYardWidth] = useState(540);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
 
   const clipboard = useRef<YardElement[]>([]);
@@ -50,10 +51,8 @@ export default function App() {
     null,
   );
 
-  // Undo/Redo stacks
   const undoStack = useRef<HistorySnapshot[]>([]);
   const redoStack = useRef<HistorySnapshot[]>([]);
-  // Refs to current state for use in closures
   const elementsRef = useRef(elements);
   const textLabelsRef = useRef(textLabels);
   elementsRef.current = elements;
@@ -295,7 +294,6 @@ export default function App() {
     toast.info("Yard cleared");
   }, [pushHistory, refreshUndoRedo]);
 
-  // Text label handlers
   const handleAddTextLabel = useCallback(
     (label: TextLabel) => {
       pushHistory();
@@ -330,9 +328,10 @@ export default function App() {
 
   const handleSaveFile = useCallback(() => {
     const data = {
-      version: 2,
+      version: 3,
       projectName,
-      yardSize,
+      yardLength,
+      yardWidth,
       libraryItems,
       elements: elements.map((el) => ({ ...el, id: el.id.toString() })),
       textLabels: textLabels.map((l) => ({ ...l, id: l.id.toString() })),
@@ -347,7 +346,7 @@ export default function App() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Layout saved to file");
-  }, [projectName, yardSize, libraryItems, elements, textLabels]);
+  }, [projectName, yardLength, yardWidth, libraryItems, elements, textLabels]);
 
   const handleLoadFile = useCallback(() => {
     const input = document.createElement("input");
@@ -361,7 +360,11 @@ export default function App() {
         try {
           const data = JSON.parse(ev.target?.result as string);
           if (data.projectName) setProjectName(data.projectName);
-          if (data.yardSize) setYardSize(data.yardSize);
+          // Support old single yardSize and new yardLength/yardWidth
+          if (data.yardLength) setYardLength(data.yardLength);
+          else if (data.yardSize) setYardLength(data.yardSize);
+          if (data.yardWidth) setYardWidth(data.yardWidth);
+          else if (data.yardSize) setYardWidth(data.yardSize);
           if (data.libraryItems) setLibraryItems(data.libraryItems);
           if (data.elements) {
             const loaded = data.elements.map((el: any) => ({
@@ -394,25 +397,21 @@ export default function App() {
     input.click();
   }, []);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
-      // Undo: Ctrl+Z (no Shift)
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         handleUndo();
         return;
       }
-      // Redo: Ctrl+Shift+Z
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && e.shiftKey) {
         e.preventDefault();
         handleRedo();
         return;
       }
-      // Redo: Ctrl+Y (alternative)
       if ((e.ctrlKey || e.metaKey) && e.key === "y") {
         e.preventDefault();
         handleRedo();
@@ -470,6 +469,29 @@ export default function App() {
               : `${selectedIds.size} elements deleted`,
           );
         }
+      } else if (
+        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)
+      ) {
+        if (selectedIds.size === 0) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 5 : 1;
+        const dx =
+          e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy =
+          e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+        pushHistory();
+        setElements((prev) =>
+          prev.map((el) =>
+            selectedIds.has(el.id)
+              ? {
+                  ...el,
+                  xPosition: Math.max(0, el.xPosition + dx),
+                  yPosition: Math.max(0, el.yPosition + dy),
+                }
+              : el,
+          ),
+        );
+        refreshUndoRedo();
       }
     };
 
@@ -502,7 +524,7 @@ export default function App() {
         style={{ backgroundColor: "oklch(0.22 0.028 220)" }}
       >
         <h1 className="text-xs font-bold tracking-[0.2em] uppercase text-white/90">
-          Casting Yard Layout Planner
+          Casting Yard Pro
         </h1>
         <div className="flex items-center gap-3 text-xs text-white/50">
           <span>{elements.length} elements</span>
@@ -511,7 +533,7 @@ export default function App() {
           )}
           <span>·</span>
           <span>
-            {yardSize}m × {yardSize}m yard
+            {yardLength}m × {yardWidth}m yard
           </span>
         </div>
       </div>
@@ -524,8 +546,10 @@ export default function App() {
         scale={scale}
         onScaleChange={setScale}
         onClearYard={handleClearYard}
-        yardSize={yardSize}
-        onYardSizeChange={setYardSize}
+        yardLength={yardLength}
+        yardWidth={yardWidth}
+        onYardLengthChange={setYardLength}
+        onYardWidthChange={setYardWidth}
         onSelectAll={handleSelectAll}
         selectedCount={selectedIds.size}
         totalCount={elements.length}
@@ -551,7 +575,8 @@ export default function App() {
             selectedIds={selectedIds}
             activeTool={activeTool}
             scale={scale}
-            yardSize={yardSize}
+            yardLength={yardLength}
+            yardWidth={yardWidth}
             onSelectElement={setSelectedIds}
             onMoveElement={handleMoveElement}
             onMoveElements={handleMoveElements}
@@ -567,7 +592,8 @@ export default function App() {
           <Canvas3D
             elements={elements}
             selectedId={firstSelectedId}
-            yardSize={yardSize}
+            yardLength={yardLength}
+            yardWidth={yardWidth}
             onSelectElement={(id) =>
               setSelectedIds(id ? new Set([id]) : new Set())
             }

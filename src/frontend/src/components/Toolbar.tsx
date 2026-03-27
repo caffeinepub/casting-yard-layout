@@ -29,8 +29,10 @@ interface ToolbarProps {
   scale: ScaleOption;
   onScaleChange: (scale: ScaleOption) => void;
   onClearYard: () => void;
-  yardSize: number;
-  onYardSizeChange: (size: number) => void;
+  yardLength: number;
+  yardWidth: number;
+  onYardLengthChange: (size: number) => void;
+  onYardWidthChange: (size: number) => void;
   onSelectAll: () => void;
   selectedCount: number;
   totalCount: number;
@@ -66,8 +68,10 @@ export function Toolbar({
   scale,
   onScaleChange,
   onClearYard,
-  yardSize,
-  onYardSizeChange,
+  yardLength,
+  yardWidth,
+  onYardLengthChange,
+  onYardWidthChange,
   onSelectAll,
   selectedCount,
   totalCount,
@@ -258,23 +262,43 @@ export function Toolbar({
 
       <div className="h-5 w-px bg-white/20 mx-1" />
 
-      {/* Yard Size input */}
+      {/* Yard Size inputs */}
       <div className="flex items-center gap-1.5">
-        <span className="text-white/60 text-xs font-medium">Yard Size</span>
-        <input
-          type="number"
-          min={50}
-          max={800}
-          step={10}
-          value={yardSize}
-          onChange={(e) => {
-            const val = Math.min(800, Math.max(50, Number(e.target.value)));
-            onYardSizeChange(val);
-          }}
-          className="h-7 w-20 text-xs rounded px-2 border border-white/20 bg-white/10 text-white text-center focus:outline-none focus:border-blue-400"
-          data-ocid="toolbar.yard_size.input"
-        />
-        <span className="text-white/40 text-xs">m</span>
+        <span className="text-white/60 text-xs font-medium">Yard</span>
+        <div className="flex items-center gap-1">
+          <span className="text-white/40 text-xs">L</span>
+          <input
+            type="number"
+            min={50}
+            max={2000}
+            step={10}
+            value={yardLength}
+            onChange={(e) => {
+              const val = Math.min(2000, Math.max(50, Number(e.target.value)));
+              onYardLengthChange(val);
+            }}
+            className="h-7 w-20 text-xs rounded px-2 border border-white/20 bg-white/10 text-white text-center focus:outline-none focus:border-blue-400"
+            data-ocid="toolbar.yard_length.input"
+          />
+          <span className="text-white/40 text-xs">m</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="text-white/40 text-xs">W</span>
+          <input
+            type="number"
+            min={50}
+            max={2000}
+            step={10}
+            value={yardWidth}
+            onChange={(e) => {
+              const val = Math.min(2000, Math.max(50, Number(e.target.value)));
+              onYardWidthChange(val);
+            }}
+            className="h-7 w-20 text-xs rounded px-2 border border-white/20 bg-white/10 text-white text-center focus:outline-none focus:border-blue-400"
+            data-ocid="toolbar.yard_width.input"
+          />
+          <span className="text-white/40 text-xs">m</span>
+        </div>
       </div>
     </div>
   );

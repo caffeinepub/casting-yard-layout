@@ -13,7 +13,8 @@ interface Canvas2DProps {
   selectedIds: Set<bigint>;
   activeTool: ToolMode;
   scale: ScaleOption;
-  yardSize: number;
+  yardLength: number;
+  yardWidth: number;
   onSelectElement: (ids: Set<bigint>) => void;
   onMoveElement: (id: bigint, x: number, y: number) => void;
   onMoveElements: (moves: { id: bigint; x: number; y: number }[]) => void;
@@ -85,16 +86,8 @@ function ElementShape({
             width={ew}
             height={halfH}
             {...commonProps}
-            rx={2}
           />
-          <rect
-            x={ex}
-            y={ey}
-            width={halfW}
-            height={halfH}
-            {...commonProps}
-            rx={2}
-          />
+          <rect x={ex} y={ey} width={halfW} height={halfH} {...commonProps} />
         </>
       );
     }
@@ -104,21 +97,13 @@ function ElementShape({
       const stemH = eh - barH;
       return (
         <>
-          <rect
-            x={ex}
-            y={ey}
-            width={ew}
-            height={barH}
-            {...commonProps}
-            rx={2}
-          />
+          <rect x={ex} y={ey} width={ew} height={barH} {...commonProps} />
           <rect
             x={ex + (ew - stemW) / 2}
             y={ey + barH}
             width={stemW}
             height={stemH}
             {...commonProps}
-            rx={2}
           />
         </>
       );
@@ -136,7 +121,6 @@ function ElementShape({
             width={flangeW}
             height={flangeH}
             {...commonProps}
-            rx={2}
           />
           <rect
             x={ex + (ew - webW) / 2}
@@ -144,7 +128,6 @@ function ElementShape({
             width={webW}
             height={webH}
             {...commonProps}
-            rx={2}
           />
           <rect
             x={ex}
@@ -152,15 +135,12 @@ function ElementShape({
             width={flangeW}
             height={flangeH}
             {...commonProps}
-            rx={2}
           />
         </>
       );
     }
     default:
-      return (
-        <rect x={ex} y={ey} width={ew} height={eh} {...commonProps} rx={2} />
-      );
+      return <rect x={ex} y={ey} width={ew} height={eh} {...commonProps} />;
   }
 }
 
@@ -169,7 +149,8 @@ export function Canvas2D({
   selectedIds,
   activeTool,
   scale,
-  yardSize,
+  yardLength,
+  yardWidth,
   onSelectElement,
   onMoveElement,
   onMoveElements,
@@ -182,7 +163,8 @@ export function Canvas2D({
   onMoveStart,
 }: Canvas2DProps) {
   const pxPerM = SCALE_PX_PER_M[scale];
-  const yardPx = yardSize * pxPerM;
+  const yardLengthPx = yardLength * pxPerM;
+  const yardWidthPx = yardWidth * pxPerM;
   const MARGIN = 32;
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -203,7 +185,6 @@ export function Canvas2D({
     origPan: { x: number; y: number };
   } | null>(null);
 
-  // Attach wheel listener with { passive: false } to prevent page scroll
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -227,14 +208,12 @@ export function Canvas2D({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Editing text state: null = not editing
-  // id = null means a new label, id = bigint means editing existing
   const [editingText, setEditingText] = useState<{
     id: bigint | null;
-    x: number; // svg px
-    y: number; // svg px
-    xM: number; // meters
-    yM: number; // meters
+    x: number;
+    y: number;
+    xM: number;
+    yM: number;
     value: string;
   } | null>(null);
 
@@ -265,14 +244,15 @@ export function Canvas2D({
 
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // getSVGPoint: inverse-transform using pan and zoom
   const getSVGPoint = useCallback(
     (e: React.MouseEvent | MouseEvent): { x: number; y: number } => {
       const svg = svgRef.current;
       if (!svg) return { x: 0, y: 0 };
       const rect = svg.getBoundingClientRect();
       return {
-        x: (e.clientX - rect.left) / zoomRef.current,
-        y: (e.clientY - rect.top) / zoomRef.current,
+        x: (e.clientX - rect.left - panRef.current.x) / zoomRef.current,
+        y: (e.clientY - rect.top - panRef.current.y) / zoomRef.current,
       };
     },
     [],
@@ -291,7 +271,6 @@ export function Canvas2D({
       if (!editingText) return;
       const trimmed = value.trim();
       if (editingText.id === null) {
-        // New label
         if (trimmed) {
           onAddTextLabel({
             id: genTextId(),
@@ -302,7 +281,6 @@ export function Canvas2D({
           });
         }
       } else {
-        // Edit existing
         if (trimmed) {
           onUpdateTextLabel(editingText.id, { text: trimmed });
         } else {
@@ -318,7 +296,6 @@ export function Canvas2D({
     e.stopPropagation();
 
     if (activeTool === "text") {
-      // In text mode, clicking an element still allows text editing on the canvas
       return;
     }
 
@@ -399,9 +376,7 @@ export function Canvas2D({
     }
 
     if (activeTool === "text") {
-      // Commit any ongoing edit first
       if (editingText) {
-        // Don't start new until old is committed via blur
         return;
       }
       const pt = getSVGPoint(e);
@@ -434,7 +409,6 @@ export function Canvas2D({
     }
   };
 
-  // Handle middle mouse button pan on container
   const handleContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button === 1) {
       e.preventDefault();
@@ -448,7 +422,6 @@ export function Canvas2D({
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      // Middle mouse pan
       if (panDrag.current) {
         const dx = e.clientX - panDrag.current.startX;
         const dy = e.clientY - panDrag.current.startY;
@@ -499,7 +472,6 @@ export function Canvas2D({
     };
 
     const onMouseUp = (e: MouseEvent) => {
-      // Clear middle mouse pan
       if (e.button === 1) {
         panDrag.current = null;
       }
@@ -570,8 +542,8 @@ export function Canvas2D({
       const svg = svgRef.current;
       if (!svg) return;
       const rect = svg.getBoundingClientRect();
-      const svgX = (e.clientX - rect.left) / zoomRef.current;
-      const svgY = (e.clientY - rect.top) / zoomRef.current;
+      const svgX = (e.clientX - rect.left - panRef.current.x) / zoomRef.current;
+      const svgY = (e.clientY - rect.top - panRef.current.y) / zoomRef.current;
       const { x, y } = svgToMeters(svgX, svgY);
       onDropElement(item, Math.max(0, x), Math.max(0, y));
     } catch {
@@ -579,9 +551,9 @@ export function Canvas2D({
     }
   };
 
-  // Generate grid lines
+  // Generate grid lines (separate loops for X and Y axes)
   const gridLines: React.ReactNode[] = [];
-  for (let m = 0; m <= yardSize; m += GRID_STEP) {
+  for (let m = 0; m <= yardLength; m += GRID_STEP) {
     const px = m * pxPerM + MARGIN;
     gridLines.push(
       <line
@@ -589,18 +561,21 @@ export function Canvas2D({
         x1={px}
         y1={MARGIN}
         x2={px}
-        y2={yardPx + MARGIN}
+        y2={yardWidthPx + MARGIN}
         stroke="#e2e8f0"
         strokeWidth="0.5"
       />,
     );
+  }
+  for (let m = 0; m <= yardWidth; m += GRID_STEP) {
+    const py = m * pxPerM + MARGIN;
     gridLines.push(
       <line
         key={`h${m}`}
         x1={MARGIN}
-        y1={px}
-        x2={yardPx + MARGIN}
-        y2={px}
+        y1={py}
+        x2={yardLengthPx + MARGIN}
+        y2={py}
         stroke="#e2e8f0"
         strokeWidth="0.5"
       />,
@@ -609,7 +584,7 @@ export function Canvas2D({
 
   // Scale markers
   const scaleMarkers: React.ReactNode[] = [];
-  for (let m = 0; m <= yardSize; m += GRID_STEP * 2) {
+  for (let m = 0; m <= yardLength; m += GRID_STEP * 2) {
     const px = m * pxPerM + MARGIN;
     scaleMarkers.push(
       <text
@@ -623,11 +598,14 @@ export function Canvas2D({
         {m}m
       </text>,
     );
+  }
+  for (let m = 0; m <= yardWidth; m += GRID_STEP * 2) {
+    const py = m * pxPerM + MARGIN;
     scaleMarkers.push(
       <text
         key={`ym${m}`}
         x={MARGIN - 4}
-        y={px + 3}
+        y={py + 3}
         textAnchor="end"
         fontSize={9}
         fill="#94a3b8"
@@ -636,9 +614,6 @@ export function Canvas2D({
       </text>,
     );
   }
-
-  const svgW = yardPx + MARGIN * 2;
-  const svgH = yardPx + MARGIN * 2;
 
   const marqueeRect = marquee
     ? {
@@ -670,32 +645,27 @@ export function Canvas2D({
       onDrop={handleDrop}
       data-ocid="canvas.canvas_target"
       data-printable="true"
+      style={{ width: "100%", height: "100%" }}
     >
-      <div
-        style={{
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-          transformOrigin: "0 0",
-          willChange: "transform",
-        }}
+      <svg
+        ref={svgRef}
+        width="100%"
+        height="100%"
+        role="img"
+        aria-label="Yard layout canvas"
+        onMouseDown={handleBackgroundMouseDown}
+        className={`no-select ${cursorClass} ${marquee ? "select-none" : ""}`}
+        textRendering="geometricPrecision"
       >
-        <svg
-          ref={svgRef}
-          width={svgW}
-          height={svgH}
-          role="img"
-          aria-label="Yard layout canvas"
-          onMouseDown={handleBackgroundMouseDown}
-          className={`no-select ${cursorClass} ${marquee ? "select-none" : ""}`}
-        >
-          <title>Yard layout canvas</title>
-
+        <title>Yard layout canvas</title>
+        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           {/* White yard background */}
           <rect
             className="canvas-bg"
             x={MARGIN}
             y={MARGIN}
-            width={yardPx}
-            height={yardPx}
+            width={yardLengthPx}
+            height={yardWidthPx}
             fill="white"
             stroke="#94a3b8"
             strokeWidth={1}
@@ -735,16 +705,13 @@ export function Canvas2D({
                         : "pointer",
                 }}
               >
-                {/* Shadow */}
                 <rect
                   x={ex + 2}
                   y={ey + 2}
                   width={ew}
                   height={eh}
                   fill="rgba(0,0,0,0.12)"
-                  rx={2}
                 />
-                {/* Shape-aware element body or image */}
                 {el.imageUrl ? (
                   <>
                     <image
@@ -753,7 +720,7 @@ export function Canvas2D({
                       y={ey}
                       width={ew}
                       height={eh}
-                      preserveAspectRatio="xMidYMid meet"
+                      preserveAspectRatio="none"
                       style={{ pointerEvents: "none" }}
                     />
                     {isSelected && (
@@ -766,7 +733,6 @@ export function Canvas2D({
                         stroke="#1E7ACB"
                         strokeWidth={2}
                         strokeDasharray="4 2"
-                        rx={2}
                       />
                     )}
                   </>
@@ -781,7 +747,6 @@ export function Canvas2D({
                     isSelected={isSelected}
                   />
                 )}
-                {/* Label */}
                 <text
                   x={cx}
                   y={cy + 3.5}
@@ -793,7 +758,6 @@ export function Canvas2D({
                 >
                   {el.name.split(" ").slice(-1)[0]}
                 </text>
-                {/* Selection handles */}
                 {isSelected && (
                   <>
                     {HANDLE_POSITIONS.map((pos) => {
@@ -808,12 +772,10 @@ export function Canvas2D({
                           fill="white"
                           stroke="#1E7ACB"
                           strokeWidth={1.5}
-                          rx={1}
                           style={{ pointerEvents: "none" }}
                         />
                       );
                     })}
-                    {/* Rotate handle - only show for single selection */}
                     {selectedIds.size === 1 && (
                       <>
                         <circle
@@ -954,7 +916,7 @@ export function Canvas2D({
             );
           })}
 
-          {/* New text input (no existing id) */}
+          {/* New text input */}
           {editingText && editingText.id === null && (
             <foreignObject
               x={editingText.x}
@@ -994,7 +956,7 @@ export function Canvas2D({
             </foreignObject>
           )}
 
-          {/* Marquee selection rectangle */}
+          {/* Marquee */}
           {marqueeRect && marqueeRect.w > 2 && marqueeRect.h > 2 && (
             <rect
               x={marqueeRect.x}
@@ -1005,7 +967,6 @@ export function Canvas2D({
               stroke="#1E7ACB"
               strokeWidth={1.5}
               strokeDasharray="5,3"
-              rx={2}
               style={{ pointerEvents: "none" }}
             />
           )}
@@ -1015,18 +976,17 @@ export function Canvas2D({
             <rect
               x={MARGIN}
               y={MARGIN}
-              width={yardPx}
-              height={yardPx}
+              width={yardLengthPx}
+              height={yardWidthPx}
               fill="rgba(30,122,203,0.06)"
               stroke="#1E7ACB"
               strokeWidth={2}
               strokeDasharray="6,4"
-              rx={4}
               style={{ pointerEvents: "none" }}
             />
           )}
-        </svg>
-      </div>
+        </g>
+      </svg>
     </div>
   );
 }

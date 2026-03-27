@@ -7,14 +7,16 @@ import type { YardElement } from "../types/yard";
 interface Canvas3DProps {
   elements: YardElement[];
   selectedId: bigint | null;
-  yardSize: number;
+  yardLength: number;
+  yardWidth: number;
   onSelectElement: (id: bigint | null) => void;
 }
 
 interface ElementMeshProps {
   el: YardElement;
   isSelected: boolean;
-  yardSize: number;
+  yardLength: number;
+  yardWidth: number;
   onClick: (e: ThreeEvent<MouseEvent>) => void;
 }
 
@@ -22,12 +24,19 @@ function degToRad(deg: number) {
   return (deg * Math.PI) / 180;
 }
 
-function ElementMesh({ el, isSelected, yardSize, onClick }: ElementMeshProps) {
+function ElementMesh({
+  el,
+  isSelected,
+  yardLength,
+  yardWidth,
+  onClick,
+}: ElementMeshProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const elH = el.height3d;
-  const half = yardSize / 2;
-  const px = el.xPosition - half;
-  const pz = el.yPosition - half;
+  const halfL = yardLength / 2;
+  const halfW = yardWidth / 2;
+  const px = el.xPosition - halfL;
+  const pz = el.yPosition - halfW;
   const py = elH / 2;
 
   const w = el.width;
@@ -158,7 +167,7 @@ function ElementMesh({ el, isSelected, yardSize, onClick }: ElementMeshProps) {
           </group>
         );
       }
-      default: // rectangle
+      default:
         return (
           // biome-ignore lint/a11y/useKeyWithClickEvents: 3D scene interaction
           <mesh ref={meshRef} castShadow receiveShadow onClick={onClick}>
@@ -201,7 +210,8 @@ function ElementMesh({ el, isSelected, yardSize, onClick }: ElementMeshProps) {
 function Scene({
   elements,
   selectedId,
-  yardSize,
+  yardLength,
+  yardWidth,
   onSelectElement,
 }: Canvas3DProps) {
   return (
@@ -221,7 +231,7 @@ function Scene({
       <directionalLight position={[-50, 60, -50]} intensity={0.4} />
 
       <Grid
-        args={[yardSize, yardSize]}
+        args={[yardLength, yardWidth]}
         cellSize={10}
         cellThickness={0.5}
         cellColor="#cbd5e1"
@@ -239,7 +249,7 @@ function Scene({
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.01, 0]}
       >
-        <planeGeometry args={[yardSize, yardSize]} />
+        <planeGeometry args={[yardLength, yardWidth]} />
         <meshStandardMaterial color="#f8fafc" roughness={0.9} />
       </mesh>
 
@@ -249,7 +259,8 @@ function Scene({
             key={String(el.id)}
             el={el}
             isSelected={el.id === selectedId}
-            yardSize={yardSize}
+            yardLength={yardLength}
+            yardWidth={yardWidth}
             onClick={(e) => {
               e.stopPropagation();
               onSelectElement(el.id === selectedId ? null : el.id);
@@ -277,7 +288,8 @@ function Scene({
 export function Canvas3D({
   elements,
   selectedId,
-  yardSize,
+  yardLength,
+  yardWidth,
   onSelectElement,
 }: Canvas3DProps) {
   return (
@@ -297,7 +309,8 @@ export function Canvas3D({
         <Scene
           elements={elements}
           selectedId={selectedId}
-          yardSize={yardSize}
+          yardLength={yardLength}
+          yardWidth={yardWidth}
           onSelectElement={onSelectElement}
         />
       </Canvas>
