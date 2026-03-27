@@ -8,7 +8,7 @@ const DEFAULT_COLOR = "#4f86c6";
 
 const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
   {
-    name: "Gantry Crane",
+    name: "Gantry-Crane",
     elementType: "custom",
     width: 5,
     height: 30,
@@ -18,7 +18,7 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
       "/assets/uploads/istockphoto-464854298-1024x1024-019d2b15-f4f1-70fa-aca4-80e5b8dbc76f-1.png",
   },
   {
-    name: "Batching Plant",
+    name: "Batching-Plant",
     elementType: "custom",
     width: 30,
     height: 30,
