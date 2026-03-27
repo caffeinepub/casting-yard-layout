@@ -138,7 +138,9 @@ export function LeftSidebar({
                 style={{ backgroundColor: item.color }}
               />
               <div className="min-w-0 text-left">
-                <div className="text-xs font-medium truncate">{item.name}</div>
+                <div className="text-xs font-medium break-words leading-tight">
+                  {item.name}
+                </div>
                 <div className="text-[10px] text-muted-foreground">
                   L:{item.height}m × W:{item.width}m
                 </div>
@@ -185,7 +187,9 @@ export function LeftSidebar({
                 className="w-6 h-6 object-cover rounded flex-shrink-0 border border-border"
               />
               <div className="min-w-0 text-left">
-                <div className="text-xs font-medium truncate">{item.name}</div>
+                <div className="text-xs font-medium break-words leading-tight">
+                  {item.name}
+                </div>
                 <div className="text-[10px] text-muted-foreground">
                   L:{item.height}m × W:{item.width}m
                 </div>
