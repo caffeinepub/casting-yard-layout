@@ -52,6 +52,7 @@ function ElementShape({
   eh,
   color,
   isSelected,
+  pxPerM,
 }: {
   shape: ShapeType;
   ex: number;
@@ -60,6 +61,7 @@ function ElementShape({
   eh: number;
   color: string;
   isSelected: boolean;
+  pxPerM: number;
 }) {
   const stroke = isSelected ? "#1E7ACB" : "none";
   const strokeWidth = isSelected ? 2 : 0;
@@ -135,6 +137,25 @@ function ElementShape({
             y={ey + flangeH + webH}
             width={flangeW}
             height={flangeH}
+            {...commonProps}
+          />
+        </>
+      );
+    }
+    case "open": {
+      // Open shape: top bar + bottom bar, open on left and right
+      // 0.5m thickness in pixels
+      const wallH = Math.max(0.5 * pxPerM, 2);
+      return (
+        <>
+          {/* Top horizontal bar (full width) */}
+          <rect x={ex} y={ey} width={ew} height={wallH} {...commonProps} />
+          {/* Bottom horizontal bar (full width) */}
+          <rect
+            x={ex}
+            y={ey + eh - wallH}
+            width={ew}
+            height={wallH}
             {...commonProps}
           />
         </>
@@ -898,6 +919,7 @@ export function Canvas2D({
                     eh={eh}
                     color={el.color}
                     isSelected={isSelected}
+                    pxPerM={pxPerM}
                   />
                 )}
                 <text

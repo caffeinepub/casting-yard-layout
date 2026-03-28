@@ -39,6 +39,7 @@ const SHAPE_LABELS: Record<ShapeType, string> = {
   "t-shape": "T-Shape",
   "i-shape": "I-Shape",
   circle: "Circle",
+  open: "Open",
 };
 
 export function PropertiesPanel({

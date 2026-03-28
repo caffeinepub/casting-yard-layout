@@ -20,7 +20,8 @@ export type ShapeType =
   | "l-shape"
   | "t-shape"
   | "i-shape"
-  | "circle";
+  | "circle"
+  | "open";
 
 export interface YardElement {
   id: bigint;

@@ -424,7 +424,7 @@ export function LeftSidebar({
         color: "#b0b0b0",
         status: "planned",
         height3d: 8,
-        shape: "rectangle",
+        shape: "open",
         imageUrl:
           "/assets/uploads/shedsquzre-019d3535-7bc3-7280-b6a1-111f64005e90-1.png",
       });

@@ -167,6 +167,37 @@ function ElementMesh({
           </group>
         );
       }
+      case "open": {
+        // Two horizontal slabs (top/bottom in 2D plan), open on left and right
+        // 0.5m wall thickness
+        const wallT = 0.5;
+        return (
+          <group>
+            {/* Front wall (full width, at front edge) */}
+            {/* biome-ignore lint/a11y/useKeyWithClickEvents: 3D scene interaction */}
+            <mesh
+              castShadow
+              receiveShadow
+              onClick={onClick}
+              position={[0, 0, -(d / 2 - wallT / 2)]}
+            >
+              <boxGeometry args={[w, elH, wallT]} />
+              <meshStandardMaterial {...matProps} />
+            </mesh>
+            {/* Back wall (full width, at back edge) */}
+            {/* biome-ignore lint/a11y/useKeyWithClickEvents: 3D scene interaction */}
+            <mesh
+              castShadow
+              receiveShadow
+              onClick={onClick}
+              position={[0, 0, d / 2 - wallT / 2]}
+            >
+              <boxGeometry args={[w, elH, wallT]} />
+              <meshStandardMaterial {...matProps} />
+            </mesh>
+          </group>
+        );
+      }
       default:
         return (
           // biome-ignore lint/a11y/useKeyWithClickEvents: 3D scene interaction
