@@ -174,9 +174,9 @@ export function LeftSidebar({
     const height3d = Number.parseFloat(iGirderHeight) || 1.5;
     const countPerBay = Math.max(1, Number.parseInt(iGirderCount) || 1);
 
-    // Gap between bottom edge of one girder and top edge of the next = 0.5m
-    // Step from top edge to top edge = girderWidth (girder itself) + 0.5m (gap)
-    const verticalStep = girderWidth + 0.5;
+    // Gap between bottom edge of one girder and top edge of the next = 0.05m
+    // Step from top edge to top edge = girderWidth (girder itself) + 0.05m (gap)
+    const verticalStep = girderWidth + 0.05;
 
     const allElements: YardElement[] = [];
 
@@ -188,7 +188,7 @@ export function LeftSidebar({
       // Max girders that fit vertically in one column
       const maxPerColumn =
         usableHeight >= girderWidth
-          ? Math.floor((usableHeight + 0.5) / verticalStep)
+          ? Math.floor((usableHeight + 0.05) / verticalStep)
           : 1;
 
       // Horizontal start: 10m from the left edge of the bay
@@ -203,8 +203,8 @@ export function LeftSidebar({
         // Column x offset: each new column shifts right by girderLength + 2m
         const colX = baseX + colIndex * (girderLength + 2);
 
-        // Column total height: each girder takes girderWidth, gaps between them are 0.5m
-        const colHeight = inThisCol * girderWidth + (inThisCol - 1) * 0.5;
+        // Column total height: each girder takes girderWidth, gaps between them are 0.05m
+        const colHeight = inThisCol * girderWidth + (inThisCol - 1) * 0.05;
         const colStartY =
           bay.yPosition + margin + (usableHeight - colHeight) / 2;
 
@@ -585,7 +585,7 @@ export function LeftSidebar({
               {(iGirderLength || iGirderWidth) && (
                 <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
                   <div className="text-[9px] text-muted-foreground">
-                    Horizontal · 0.5m gap between girders
+                    Horizontal · 0.05m gap between girders
                   </div>
                   <div className="text-[10px] font-medium text-foreground">
                     {Math.max(1, Number.parseInt(iGirderCount) || 1)} girder
