@@ -387,25 +387,27 @@ export function LeftSidebar({
       toast.error("Please place the Bay First");
       return;
     }
-    const iGirders = placedElements.filter((el) => el.name === "I-Girder");
-    if (iGirders.length === 0) {
-      toast.error("Please place I-Girders first");
+    const formworks = placedElements.filter(
+      (el) => el.name === "Box-I-Girder-Formwork",
+    );
+    if (formworks.length === 0) {
+      toast.error("Please place Formwork first");
       return;
     }
 
     const allShedElements: YardElement[] = [];
 
     for (const bay of bays) {
-      const girderInBay = iGirders.filter(
-        (g) =>
-          g.xPosition >= bay.xPosition &&
-          g.xPosition < bay.xPosition + bay.width,
+      const fwInBay = formworks.filter(
+        (fw) =>
+          fw.xPosition >= bay.xPosition &&
+          fw.xPosition < bay.xPosition + bay.width,
       );
-      if (girderInBay.length === 0) continue;
+      if (fwInBay.length === 0) continue;
 
-      const shedX = Math.min(...girderInBay.map((g) => g.xPosition));
+      const shedX = Math.min(...fwInBay.map((fw) => fw.xPosition));
       const shedRight = Math.max(
-        ...girderInBay.map((g) => g.xPosition + g.width),
+        ...fwInBay.map((fw) => fw.xPosition + fw.width),
       );
       const shedLength = shedRight - shedX;
       const shedWidth = bay.height;
@@ -429,7 +431,7 @@ export function LeftSidebar({
     }
 
     if (allShedElements.length === 0) {
-      toast.error("No I-Girders found on any Bay");
+      toast.error("No Formwork found on any Bay");
       return;
     }
 
