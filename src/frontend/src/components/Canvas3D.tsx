@@ -168,7 +168,7 @@ function ElementMesh({
         );
       }
       case "open": {
-        // Two horizontal slabs (top/bottom in 2D plan), open on left and right
+        // Three slabs: front, back, and top cover
         // 0.5m wall thickness
         const wallT = 0.5;
         return (
@@ -193,6 +193,17 @@ function ElementMesh({
               position={[0, 0, d / 2 - wallT / 2]}
             >
               <boxGeometry args={[w, elH, wallT]} />
+              <meshStandardMaterial {...matProps} />
+            </mesh>
+            {/* Top cover slab (horizontal, covers full width and depth at top) */}
+            {/* biome-ignore lint/a11y/useKeyWithClickEvents: 3D scene interaction */}
+            <mesh
+              castShadow
+              receiveShadow
+              onClick={onClick}
+              position={[0, elH / 2 - wallT / 2, 0]}
+            >
+              <boxGeometry args={[w, wallT, d]} />
               <meshStandardMaterial {...matProps} />
             </mesh>
           </group>

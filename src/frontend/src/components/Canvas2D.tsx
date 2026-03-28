@@ -143,13 +143,21 @@ function ElementShape({
       );
     }
     case "open": {
-      // Open shape: top bar + bottom bar, open on left and right
+      // Open shape: cover block + top bar + bottom bar, open on left and right
       // 0.5m thickness in pixels
       const wallH = Math.max(0.5 * pxPerM, 2);
       return (
         <>
-          {/* Top horizontal bar (full width) */}
+          {/* Cover block (NEW) - sits on top of the element */}
           <rect x={ex} y={ey} width={ew} height={wallH} {...commonProps} />
+          {/* Top horizontal bar (shifted down by wallH) */}
+          <rect
+            x={ex}
+            y={ey + wallH}
+            width={ew}
+            height={wallH}
+            {...commonProps}
+          />
           {/* Bottom horizontal bar (full width) */}
           <rect
             x={ex}

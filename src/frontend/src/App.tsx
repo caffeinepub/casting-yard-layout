@@ -316,11 +316,51 @@ export default function App() {
     [pushHistory, refreshUndoRedo],
   );
 
-  const handleMoveElement = useCallback((id: bigint, x: number, y: number) => {
-    setElements((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, xPosition: x, yPosition: y } : e)),
-    );
-  }, []);
+  // Helper: check if element overlaps with a bay bounding box
+  const getElementsOnBay = useCallback(
+    (bay: YardElement, allElements: YardElement[]) => {
+      return allElements.filter((e) => {
+        if (e.id === bay.id) return false;
+        if (e.name === "Bay") return false;
+        // overlap check
+        return (
+          e.xPosition < bay.xPosition + bay.width &&
+          e.xPosition + e.width > bay.xPosition &&
+          e.yPosition < bay.yPosition + bay.height &&
+          e.yPosition + e.height > bay.yPosition
+        );
+      });
+    },
+    [],
+  );
+
+  const handleMoveElement = useCallback(
+    (id: bigint, x: number, y: number) => {
+      setElements((prev) => {
+        const moving = prev.find((e) => e.id === id);
+        if (moving && moving.name === "Bay") {
+          const dx = x - moving.xPosition;
+          const dy = y - moving.yPosition;
+          const onBay = getElementsOnBay(moving, prev);
+          const onBayIds = new Set(onBay.map((e) => e.id));
+          return prev.map((e) => {
+            if (e.id === id) return { ...e, xPosition: x, yPosition: y };
+            if (onBayIds.has(e.id))
+              return {
+                ...e,
+                xPosition: Math.max(0, e.xPosition + dx),
+                yPosition: Math.max(0, e.yPosition + dy),
+              };
+            return e;
+          });
+        }
+        return prev.map((e) =>
+          e.id === id ? { ...e, xPosition: x, yPosition: y } : e,
+        );
+      });
+    },
+    [getElementsOnBay],
+  );
 
   const handleMoveElements = useCallback(
     (moves: { id: bigint; x: number; y: number }[]) => {
@@ -733,17 +773,25 @@ export default function App() {
         const dy =
           e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
         pushHistory();
-        setElements((prev) =>
-          prev.map((el) =>
-            selectedIds.has(el.id)
+        setElements((prev) => {
+          // Collect ids to move (selected + elements on selected bays)
+          const toMove = new Set(selectedIds);
+          for (const el of prev) {
+            if (selectedIds.has(el.id) && el.name === "Bay") {
+              const onBay = getElementsOnBay(el, prev);
+              for (const child of onBay) toMove.add(child.id);
+            }
+          }
+          return prev.map((el) =>
+            toMove.has(el.id)
               ? {
                   ...el,
                   xPosition: Math.max(0, el.xPosition + dx),
                   yPosition: Math.max(0, el.yPosition + dy),
                 }
               : el,
-          ),
-        );
+          );
+        });
         refreshUndoRedo();
       }
     };
@@ -753,6 +801,7 @@ export default function App() {
   }, [
     screen,
     selectedIds,
+    getElementsOnBay,
     handleUndo,
     handleRedo,
     pushHistory,

@@ -56,7 +56,7 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     elementType: "custom",
     width: 10,
     height: 30,
-    height3d: 8,
+    height3d: 20,
     color: "#b0b0b0",
     defaultStatus: "planned",
     imageUrl:
@@ -88,7 +88,7 @@ interface LeftSidebarProps {
 
 export function LeftSidebar({
   onAddElement,
-  onAddMultipleElements,
+  onAddMultipleElements: _onAddMultipleElements,
   onAddRawElements,
   libraryItems,
   onLibraryChange,
@@ -281,29 +281,64 @@ export function LeftSidebar({
     const bWidth = Number.parseFloat(bayWidth) || 10;
     const count = Math.max(1, Number.parseInt(bayCount) || 1);
 
-    // spacing = gap between bay edges (edge-to-edge)
+    // gap between bay edges (edge-to-edge) = 30m
     const spacing = spacingSettings.bayVerticalSpacing;
 
-    const totalHeight = count * bWidth + (count - 1) * 30;
+    // Total layout height: bays + gaps
+    const totalHeight = count * bWidth + (count - 1) * spacing;
     const startX = Math.max(0, (yardLength - bLength) / 2);
     const startY = Math.max(0, (yardWidth - totalHeight) / 2);
 
-    const items: LibraryItem[] = Array.from({ length: count }, () => ({
-      name: "Bay",
-      elementType: "custom" as const,
-      width: bLength, // horizontal (length)
-      height: bWidth, // vertical (width)
-      height3d: 5,
-      color: "#e0b84a",
-      defaultStatus: "planned" as const,
-    }));
+    const ROAD_WIDTH = 10; // 10m road between bays
+    const ROAD_IMAGE =
+      "/assets/uploads/raod-019d2e6f-b1b6-7075-ab34-f341729a23a7-1.png";
 
-    onAddMultipleElements(items, spacing, "vertical", {
-      yardLength,
-      yardWidth,
-      startX,
-      startY,
-    });
+    const allElements: YardElement[] = [];
+    let curY = startY;
+
+    for (let i = 0; i < count; i++) {
+      // Bay element
+      allElements.push({
+        id: BigInt(Date.now()) * 100000n + BigInt(allElements.length),
+        name: "Bay",
+        elementType: "custom",
+        width: bLength,
+        height: bWidth,
+        xPosition: startX,
+        yPosition: curY,
+        rotationAngle: 0,
+        color: "#e0b84a",
+        status: "planned",
+        height3d: 0.15,
+        shape: "rectangle",
+      });
+
+      curY += bWidth;
+
+      // Road between this bay and the next
+      if (i < count - 1) {
+        // Centre the 10m road in the spacing gap
+        const roadY = curY + (spacing - ROAD_WIDTH) / 2;
+        allElements.push({
+          id: BigInt(Date.now()) * 100000n + BigInt(allElements.length + 1),
+          name: "Road",
+          elementType: "custom",
+          width: bLength,
+          height: ROAD_WIDTH,
+          xPosition: startX,
+          yPosition: roadY,
+          rotationAngle: 0,
+          color: "#888888",
+          status: "planned",
+          height3d: 0.1,
+          shape: "rectangle",
+          imageUrl: ROAD_IMAGE,
+        });
+        curY += spacing;
+      }
+    }
+
+    onAddRawElements(allElements);
     setBayDialogOpen(false);
     setBayLength("");
     setBayWidth("");
@@ -423,7 +458,7 @@ export function LeftSidebar({
         rotationAngle: 0,
         color: "#b0b0b0",
         status: "planned",
-        height3d: 8,
+        height3d: 20,
         shape: "open",
         imageUrl:
           "/assets/uploads/shedsquzre-019d3535-7bc3-7280-b6a1-111f64005e90-1.png",
