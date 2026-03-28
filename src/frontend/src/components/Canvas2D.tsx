@@ -357,7 +357,7 @@ export function Canvas2D({
       const ex = el.xPosition * pxPerM + MARGIN;
       const ey = el.yPosition * pxPerM + MARGIN;
       const ew = el.width * pxPerM;
-      const eh = Math.max(el.height * pxPerM, 6);
+      const eh = el.height * pxPerM;
       const cx = ex + ew / 2;
       const cy = ey + eh / 2;
       const startAngle = Math.atan2(pt.y - cy, pt.x - cx) * (180 / Math.PI);
@@ -558,7 +558,7 @@ export function Canvas2D({
             const ex = el.xPosition * pxPerM + MARGIN;
             const ey = el.yPosition * pxPerM + MARGIN;
             const ew = el.width * pxPerM;
-            const eh = Math.max(el.height * pxPerM, 6);
+            const eh = el.height * pxPerM;
             return ex < mx + mw && ex + ew > mx && ey < my + mh && ey + eh > my;
           });
 
@@ -750,7 +750,7 @@ export function Canvas2D({
             const ex = el.xPosition * pxPerM + MARGIN;
             const ey = el.yPosition * pxPerM + MARGIN;
             const ew = el.width * pxPerM;
-            const eh = Math.max(el.height * pxPerM, 6);
+            const eh = el.height * pxPerM;
             const isSelected = selectedIds.has(el.id);
             const isSnapTarget = snapTargetId === el.id;
             const cx = ex + ew / 2;
@@ -777,7 +777,51 @@ export function Canvas2D({
                         : "pointer",
                 }}
               >
-                {el.imageUrl ? (
+                {el.imageUrl &&
+                (el.name === "Reinforcement-Cage" ||
+                  el.name === "Factory-Shed") ? (
+                  <>
+                    <defs>
+                      <pattern
+                        id={`tile-pattern-${el.id}`}
+                        patternUnits="userSpaceOnUse"
+                        x={ex}
+                        y={ey}
+                        width={eh}
+                        height={eh}
+                      >
+                        <image
+                          href={el.imageUrl}
+                          x={0}
+                          y={0}
+                          width={eh}
+                          height={eh}
+                          preserveAspectRatio="xMidYMid slice"
+                        />
+                      </pattern>
+                    </defs>
+                    <rect
+                      x={ex}
+                      y={ey}
+                      width={ew}
+                      height={eh}
+                      fill={`url(#tile-pattern-${el.id})`}
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {isSelected && (
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill="none"
+                        stroke="#1E7ACB"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                      />
+                    )}
+                  </>
+                ) : el.imageUrl ? (
                   <>
                     <image
                       href={el.imageUrl}
@@ -786,6 +830,50 @@ export function Canvas2D({
                       width={ew}
                       height={eh}
                       preserveAspectRatio="none"
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {isSelected && (
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill="none"
+                        stroke="#1E7ACB"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                      />
+                    )}
+                  </>
+                ) : el.name === "Box-I-Girder-Formwork" ? (
+                  <>
+                    <rect
+                      x={ex}
+                      y={ey}
+                      width={ew}
+                      height={eh}
+                      fill="#FF6600"
+                      opacity={0.9}
+                      stroke="none"
+                    />
+                    {/* Inner black top border line */}
+                    <line
+                      x1={ex}
+                      y1={ey + 2}
+                      x2={ex + ew}
+                      y2={ey + 2}
+                      stroke="black"
+                      strokeWidth={2}
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {/* Inner black bottom border line */}
+                    <line
+                      x1={ex}
+                      y1={ey + eh - 2}
+                      x2={ex + ew}
+                      y2={ey + eh - 2}
+                      stroke="black"
+                      strokeWidth={2}
                       style={{ pointerEvents: "none" }}
                     />
                     {isSelected && (
@@ -1049,6 +1137,174 @@ export function Canvas2D({
               style={{ pointerEvents: "none" }}
             />
           )}
+
+          {/* Yard Summary Legend */}
+          {(() => {
+            const iGirderCount = elements.filter(
+              (el) =>
+                el.name.toLowerCase().includes("i-girder") &&
+                !el.name.toLowerCase().includes("formwork"),
+            ).length;
+            const rcCount = elements.filter(
+              (el) => el.name === "Reinforcement-Cage",
+            ).length;
+            const formworkCount = elements.filter((el) =>
+              el.name.toLowerCase().includes("formwork"),
+            ).length;
+            const bayCount = elements.filter(
+              (el) => el.name.toLowerCase() === "bay",
+            ).length;
+
+            const legendW = 170;
+            const legendH = 106;
+            const spacingM = 10;
+            const legendX = MARGIN + yardLengthPx - spacingM * pxPerM - legendW;
+            const legendY = MARGIN + yardWidthPx - spacingM * pxPerM - legendH;
+
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                {/* Background */}
+                <rect
+                  x={legendX}
+                  y={legendY}
+                  width={legendW}
+                  height={legendH}
+                  fill="rgba(255,255,255,0.92)"
+                  stroke="#94a3b8"
+                  strokeWidth={1}
+                />
+                {/* Title */}
+                <text
+                  x={legendX + legendW / 2}
+                  y={legendY + 20}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fontWeight={700}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                >
+                  YARD SUMMARY
+                </text>
+                {/* Divider */}
+                <line
+                  x1={legendX + 8}
+                  y1={legendY + 26}
+                  x2={legendX + legendW - 8}
+                  y2={legendY + 26}
+                  stroke="#94a3b8"
+                  strokeWidth={0.75}
+                />
+                {/* Row 1: I-Girders */}
+                <rect
+                  x={legendX + 10}
+                  y={legendY + 32}
+                  width={10}
+                  height={8}
+                  fill="#5FAE4E"
+                />
+                <text
+                  x={legendX + 26}
+                  y={legendY + 40}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                >
+                  I-Girders Placed:
+                </text>
+                <text
+                  x={legendX + legendW - 10}
+                  y={legendY + 40}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                  textAnchor="end"
+                >
+                  {iGirderCount}
+                </text>
+                {/* Row 2: Formwork */}
+                <rect
+                  x={legendX + 10}
+                  y={legendY + 48}
+                  width={10}
+                  height={8}
+                  fill="#FF6600"
+                />
+                <text
+                  x={legendX + 26}
+                  y={legendY + 56}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                >
+                  Formwork Placed:
+                </text>
+                <text
+                  x={legendX + legendW - 10}
+                  y={legendY + 56}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                  textAnchor="end"
+                >
+                  {formworkCount}
+                </text>
+                {/* Row 3: Bays */}
+                <rect
+                  x={legendX + 10}
+                  y={legendY + 64}
+                  width={10}
+                  height={8}
+                  fill="#2F7DE1"
+                />
+                <text
+                  x={legendX + 26}
+                  y={legendY + 72}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                >
+                  No. of Bays:
+                </text>
+                <text
+                  x={legendX + legendW - 10}
+                  y={legendY + 72}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                  textAnchor="end"
+                >
+                  {bayCount}
+                </text>
+                {/* Row 4: Reinforcement-Cages */}
+                <rect
+                  x={legendX + 10}
+                  y={legendY + 80}
+                  width={10}
+                  height={8}
+                  fill="#7c9cbf"
+                />
+                <text
+                  x={legendX + 26}
+                  y={legendY + 88}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                >
+                  R-Cages Placed:
+                </text>
+                <text
+                  x={legendX + legendW - 10}
+                  y={legendY + 88}
+                  fontSize={9}
+                  fontFamily="sans-serif"
+                  fill="#1a1a2e"
+                  textAnchor="end"
+                >
+                  {rcCount}
+                </text>
+              </g>
+            );
+          })()}
 
           {/* Drag-over overlay */}
           {isDragOver && (

@@ -57,6 +57,42 @@ export interface LibraryItem {
   imageUrl?: string; // if set, renders as image on canvas
 }
 
+export interface SpacingSettings {
+  // Bay
+  bayVerticalSpacing: number; // default 30
+  // I-Girder
+  iGirderVerticalGap: number; // default 0.5 (gap between girder edges)
+  iGirderLeftMargin: number; // default 10 (from left edge of bay)
+  iGirderBayMargin: number; // default 2 (from top/bottom of bay)
+  iGirderColumnGap: number; // default 2 (gap between columns)
+  // Formwork
+  formworkVerticalGap: number; // default 0.5
+  formworkLeftMargin: number; // default 10
+  formworkBayMargin: number; // default 2
+  formworkColumnGap: number; // default 2
+  // Reinforcement-Cage
+  rcVerticalGap: number; // default 0.5
+  rcLeftMargin: number; // default 10
+  rcBayMargin: number; // default 2
+  rcColumnGap: number; // default 2
+}
+
+export const DEFAULT_SPACING_SETTINGS: SpacingSettings = {
+  bayVerticalSpacing: 30,
+  iGirderVerticalGap: 0.5,
+  iGirderLeftMargin: 10,
+  iGirderBayMargin: 2,
+  iGirderColumnGap: 2,
+  formworkVerticalGap: 0.5,
+  formworkLeftMargin: 10,
+  formworkBayMargin: 2,
+  formworkColumnGap: 2,
+  rcVerticalGap: 0.5,
+  rcLeftMargin: 10,
+  rcBayMargin: 2,
+  rcColumnGap: 2,
+};
+
 export const ELEMENT_COLORS: Record<ElementType, string> = {
   beam: "#F2D64B",
   slab: "#F28C28",

@@ -7,6 +7,7 @@ import { Dashboard } from "./components/Dashboard";
 import { Header } from "./components/Header";
 import { LeftSidebar } from "./components/LeftSidebar";
 import { PropertiesPanel } from "./components/PropertiesPanel";
+import { SettingsPage } from "./components/SettingsPage";
 import { Toolbar } from "./components/Toolbar";
 import { useProjects } from "./hooks/useProjects";
 import { useSaveProject } from "./hooks/useQueries";
@@ -19,7 +20,12 @@ import type {
   ViewMode,
   YardElement,
 } from "./types/yard";
-import { ELEMENT_3D_HEIGHT, ELEMENT_COLORS } from "./types/yard";
+import {
+  DEFAULT_SPACING_SETTINGS,
+  ELEMENT_3D_HEIGHT,
+  ELEMENT_COLORS,
+} from "./types/yard";
+import type { SpacingSettings } from "./types/yard";
 
 let nextId = BigInt(100);
 function genId(): bigint {
@@ -38,7 +44,9 @@ interface HistorySnapshot {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState<"dashboard" | "editor">("dashboard");
+  const [screen, setScreen] = useState<"dashboard" | "editor" | "settings">(
+    "dashboard",
+  );
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
   const [elements, setElements] = useState<YardElement[]>([]);
@@ -51,6 +59,9 @@ export default function App() {
   const [yardLength, setYardLength] = useState(540);
   const [yardWidth, setYardWidth] = useState(540);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+  const [spacingSettings, setSpacingSettings] = useState<SpacingSettings>(
+    DEFAULT_SPACING_SETTINGS,
+  );
 
   const clipboard = useRef<YardElement[]>([]);
   const lastPlacedRef = useRef<{
@@ -765,6 +776,35 @@ export default function App() {
     );
   }
 
+  if (screen === "settings") {
+    return (
+      <div
+        className="h-screen flex flex-col overflow-hidden"
+        style={{ backgroundColor: "oklch(0.18 0.022 220)" }}
+      >
+        <Toaster />
+        <Header
+          projectName={projectName}
+          onProjectChange={setProjectName}
+          onSave={handleSave}
+          isSaving={saveProject.isPending}
+          projects={[
+            "Main Casting Yard",
+            "North Yard",
+            "South Yard",
+            "Test Yard",
+          ]}
+          onGoToDashboard={handleGoToDashboard}
+        />
+        <SettingsPage
+          settings={spacingSettings}
+          onSettingsChange={setSpacingSettings}
+          onBack={() => setScreen("editor")}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-background">
       <Toaster />
@@ -824,6 +864,7 @@ export default function App() {
         onRedo={handleRedo}
         canUndo={canUndo}
         canRedo={canRedo}
+        onOpenSettings={() => setScreen("settings")}
       />
 
       {/* Main 3-column layout */}
@@ -837,6 +878,7 @@ export default function App() {
           yardLength={yardLength}
           yardWidth={yardWidth}
           placedElements={elements}
+          spacingSettings={spacingSettings}
         />
 
         {viewMode === "2d" ? (

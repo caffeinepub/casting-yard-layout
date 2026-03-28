@@ -3,7 +3,8 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Settings, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { LibraryItem, YardElement } from "../types/yard";
+import type { LibraryItem, SpacingSettings, YardElement } from "../types/yard";
+import { DEFAULT_SPACING_SETTINGS } from "../types/yard";
 
 const DEFAULT_COLOR = "#4f86c6";
 
@@ -39,6 +40,28 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     defaultStatus: "planned",
     imageUrl: "/assets/uploads/raod-019d2e6f-b1b6-7075-ab34-f341729a23a7-1.png",
   },
+  {
+    name: "Reinforcement-Cage",
+    elementType: "custom",
+    width: 0.8,
+    height: 30,
+    height3d: 2,
+    color: "#7c9cbf",
+    defaultStatus: "planned",
+    imageUrl:
+      "/assets/uploads/image-019d33a4-4648-744f-86c1-eb304b8f6e32-1.png",
+  },
+  {
+    name: "Factory-Shed",
+    elementType: "custom",
+    width: 10,
+    height: 30,
+    height3d: 8,
+    color: "#b0b0b0",
+    defaultStatus: "planned",
+    imageUrl:
+      "/assets/uploads/shedsquzre-019d3535-7bc3-7280-b6a1-111f64005e90-1.png",
+  },
 ];
 
 interface LeftSidebarProps {
@@ -60,6 +83,7 @@ interface LeftSidebarProps {
   yardLength: number;
   yardWidth: number;
   placedElements: YardElement[];
+  spacingSettings?: SpacingSettings;
 }
 
 export function LeftSidebar({
@@ -71,6 +95,7 @@ export function LeftSidebar({
   yardLength,
   yardWidth,
   placedElements,
+  spacingSettings = DEFAULT_SPACING_SETTINGS,
 }: LeftSidebarProps) {
   const [search, setSearch] = useState("");
 
@@ -88,10 +113,10 @@ export function LeftSidebar({
 
   // I-Girder config
   const [iGirderDialogOpen, setIGirderDialogOpen] = useState(false);
-  const [iGirderLength, setIGirderLength] = useState("");
-  const [iGirderWidth, setIGirderWidth] = useState("");
-  const [iGirderHeight, setIGirderHeight] = useState("");
-  const [iGirderCount, setIGirderCount] = useState("1");
+  const [iGirderLength, setIGirderLength] = useState("30");
+  const [iGirderWidth, setIGirderWidth] = useState("0.8");
+  const [iGirderHeight, setIGirderHeight] = useState("2");
+  const [iGirderCount, setIGirderCount] = useState("50");
 
   // Bay config
   const [bayDialogOpen, setBayDialogOpen] = useState(false);
@@ -101,10 +126,17 @@ export function LeftSidebar({
 
   // Formwork config
   const [formworkDialogOpen, setFormworkDialogOpen] = useState(false);
-  const [formworkLength, setFormworkLength] = useState("");
-  const [formworkWidth, setFormworkWidth] = useState("");
-  const [formworkHeight, setFormworkHeight] = useState("");
-  const [formworkCount, setFormworkCount] = useState("1");
+  const [formworkLength, setFormworkLength] = useState("30");
+  const [formworkWidth, setFormworkWidth] = useState("4");
+  const [formworkHeight, setFormworkHeight] = useState("6");
+  const [formworkCount, setFormworkCount] = useState("30");
+
+  // Reinforcement-Cage config
+  const [rcDialogOpen, setRcDialogOpen] = useState(false);
+  const [rcLength, setRcLength] = useState("30");
+  const [rcWidth, setRcWidth] = useState("0.8");
+  const [rcHeight, setRcHeight] = useState("2");
+  const [rcCount, setRcCount] = useState("50");
 
   const batchingPlantItem = EQUIPMENT_ITEMS.find(
     (i) => i.name === "Batching-Plant",
@@ -169,30 +201,33 @@ export function LeftSidebar({
       return;
     }
 
-    const girderLength = Number.parseFloat(iGirderLength) || 10;
-    const girderWidth = Number.parseFloat(iGirderWidth) || 2;
-    const height3d = Number.parseFloat(iGirderHeight) || 1.5;
+    const girderLength = Number.parseFloat(iGirderLength) || 30;
+    const girderWidth = Number.parseFloat(iGirderWidth) || 0.8;
+    const height3d = Number.parseFloat(iGirderHeight) || 2;
     const countPerBay = Math.max(1, Number.parseInt(iGirderCount) || 1);
 
-    // Gap between bottom edge of one girder and top edge of the next = 0.05m
-    // Step from top edge to top edge = girderWidth (girder itself) + 0.05m (gap)
-    const verticalStep = girderWidth + 0.05;
+    // Gap between bottom edge of one girder and top edge of the next = 0.5m
+    // Step from top edge to top edge = girderWidth (girder itself) + 0.5m (gap)
+    const verticalStep = girderWidth + spacingSettings.iGirderVerticalGap;
 
     const allElements: YardElement[] = [];
 
     for (const bay of bays) {
-      // Usable vertical space inside bay (2m margin each side)
-      const margin = 2;
+      // Usable vertical space inside bay
+      const margin = spacingSettings.iGirderBayMargin;
       const usableHeight = bay.height - margin * 2;
 
       // Max girders that fit vertically in one column
       const maxPerColumn =
         usableHeight >= girderWidth
-          ? Math.floor((usableHeight + 0.05) / verticalStep)
+          ? Math.floor(
+              (usableHeight + spacingSettings.iGirderVerticalGap) /
+                verticalStep,
+            )
           : 1;
 
-      // Horizontal start: 10m from the left edge of the bay
-      const baseX = bay.xPosition + 10;
+      // Horizontal start: left margin from the left edge of the bay
+      const baseX = bay.xPosition + spacingSettings.iGirderLeftMargin;
 
       let placed = 0;
       let colIndex = 0;
@@ -200,11 +235,14 @@ export function LeftSidebar({
       while (placed < countPerBay) {
         const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
 
-        // Column x offset: each new column shifts right by girderLength + 2m
-        const colX = baseX + colIndex * (girderLength + 2);
+        // Column x offset: each new column shifts right by girderLength + column gap
+        const colX =
+          baseX + colIndex * (girderLength + spacingSettings.iGirderColumnGap);
 
-        // Column total height: each girder takes girderWidth, gaps between them are 0.05m
-        const colHeight = inThisCol * girderWidth + (inThisCol - 1) * 0.05;
+        // Column total height
+        const colHeight =
+          inThisCol * girderWidth +
+          (inThisCol - 1) * spacingSettings.iGirderVerticalGap;
         const colStartY =
           bay.yPosition + margin + (usableHeight - colHeight) / 2;
 
@@ -232,10 +270,10 @@ export function LeftSidebar({
 
     onAddRawElements(allElements);
     setIGirderDialogOpen(false);
-    setIGirderLength("");
-    setIGirderWidth("");
-    setIGirderHeight("");
-    setIGirderCount("1");
+    setIGirderLength("30");
+    setIGirderWidth("0.8");
+    setIGirderHeight("2");
+    setIGirderCount("50");
   };
 
   const handlePlaceBays = () => {
@@ -243,8 +281,8 @@ export function LeftSidebar({
     const bWidth = Number.parseFloat(bayWidth) || 10;
     const count = Math.max(1, Number.parseInt(bayCount) || 1);
 
-    // spacing = gap between bay edges (edge-to-edge), exactly 30m
-    const spacing = 30;
+    // spacing = gap between bay edges (edge-to-edge)
+    const spacing = spacingSettings.bayVerticalSpacing;
 
     const totalHeight = count * bWidth + (count - 1) * 30;
     const startX = Math.max(0, (yardLength - bLength) / 2);
@@ -272,6 +310,132 @@ export function LeftSidebar({
     setBayCount("1");
   };
 
+  const handlePlaceReinforcementCages = () => {
+    const bays = placedElements.filter((el) => el.name === "Bay");
+    if (bays.length === 0) {
+      toast.error("Please place the Bay First");
+      return;
+    }
+
+    const girderLength = Number.parseFloat(rcLength) || 30;
+    const girderWidth = Number.parseFloat(rcWidth) || 0.8;
+    const height3d = Number.parseFloat(rcHeight) || 2;
+    const countPerBay = Math.max(1, Number.parseInt(rcCount) || 1);
+
+    const verticalStep = girderWidth + spacingSettings.rcVerticalGap;
+    const allElements: YardElement[] = [];
+
+    for (const bay of bays) {
+      const margin = spacingSettings.rcBayMargin;
+      const usableHeight = bay.height - margin * 2;
+      const maxPerColumn =
+        usableHeight >= girderWidth
+          ? Math.floor(
+              (usableHeight + spacingSettings.rcVerticalGap) / verticalStep,
+            )
+          : 1;
+
+      const baseX = bay.xPosition + spacingSettings.rcLeftMargin;
+      let placed = 0;
+      let colIndex = 0;
+
+      while (placed < countPerBay) {
+        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
+        const colX =
+          baseX + colIndex * (girderLength + spacingSettings.rcColumnGap);
+        const colHeight =
+          inThisCol * girderWidth +
+          (inThisCol - 1) * spacingSettings.rcVerticalGap;
+        const colStartY =
+          bay.yPosition + margin + (usableHeight - colHeight) / 2;
+
+        for (let i = 0; i < inThisCol; i++) {
+          allElements.push({
+            id: BigInt(Date.now()) * 100000n + BigInt(allElements.length),
+            name: "Reinforcement-Cage",
+            elementType: "custom",
+            width: girderLength,
+            height: girderWidth,
+            xPosition: colX,
+            yPosition: colStartY + i * verticalStep,
+            rotationAngle: 0,
+            color: "#7c9cbf",
+            status: "planned",
+            height3d,
+            shape: "rectangle",
+            imageUrl:
+              "/assets/uploads/image-019d33a4-4648-744f-86c1-eb304b8f6e32-1.png",
+          });
+        }
+
+        placed += inThisCol;
+        colIndex++;
+      }
+    }
+
+    onAddRawElements(allElements);
+    setRcDialogOpen(false);
+    setRcLength("30");
+    setRcWidth("0.8");
+    setRcHeight("2");
+    setRcCount("50");
+  };
+
+  const handlePlaceFactoryShed = () => {
+    const bays = placedElements.filter((el) => el.name === "Bay");
+    if (bays.length === 0) {
+      toast.error("Please place the Bay First");
+      return;
+    }
+    const iGirders = placedElements.filter((el) => el.name === "I-Girder");
+    if (iGirders.length === 0) {
+      toast.error("Please place I-Girders first");
+      return;
+    }
+
+    const allShedElements: YardElement[] = [];
+
+    for (const bay of bays) {
+      const girderInBay = iGirders.filter(
+        (g) =>
+          g.xPosition >= bay.xPosition &&
+          g.xPosition < bay.xPosition + bay.width,
+      );
+      if (girderInBay.length === 0) continue;
+
+      const shedX = Math.min(...girderInBay.map((g) => g.xPosition));
+      const shedRight = Math.max(
+        ...girderInBay.map((g) => g.xPosition + g.width),
+      );
+      const shedLength = shedRight - shedX;
+      const shedWidth = bay.height;
+
+      allShedElements.push({
+        id: BigInt(Date.now()) * 100000n + BigInt(allShedElements.length),
+        name: "Factory-Shed",
+        elementType: "custom",
+        width: shedLength,
+        height: shedWidth,
+        xPosition: shedX,
+        yPosition: bay.yPosition,
+        rotationAngle: 0,
+        color: "#b0b0b0",
+        status: "planned",
+        height3d: 8,
+        shape: "rectangle",
+        imageUrl:
+          "/assets/uploads/shedsquzre-019d3535-7bc3-7280-b6a1-111f64005e90-1.png",
+      });
+    }
+
+    if (allShedElements.length === 0) {
+      toast.error("No I-Girders found on any Bay");
+      return;
+    }
+
+    onAddRawElements(allShedElements);
+  };
+
   const handlePlaceFormwork = () => {
     // Check if any Bay has been placed on the canvas
     const bays = placedElements.filter((el) => el.name === "Bay");
@@ -280,30 +444,32 @@ export function LeftSidebar({
       return;
     }
 
-    const fwLength = Number.parseFloat(formworkLength) || 10;
-    const fwWidth = Number.parseFloat(formworkWidth) || 2;
-    const height3d = Number.parseFloat(formworkHeight) || 1.5;
+    const fwLength = Number.parseFloat(formworkLength) || 30;
+    const fwWidth = Number.parseFloat(formworkWidth) || 4;
+    const height3d = Number.parseFloat(formworkHeight) || 6;
     const countPerBay = Math.max(1, Number.parseInt(formworkCount) || 1);
 
-    // Gap between bottom edge of one formwork and top edge of the next = 0.5m
-    // Step from top edge to top edge = fwWidth (element itself) + 0.5m (gap)
-    const verticalStep = fwWidth + 0.5;
+    // Step from top edge to top edge = fwWidth + vertical gap
+    const verticalStep = fwWidth + spacingSettings.formworkVerticalGap;
 
     const allElements: YardElement[] = [];
 
     for (const bay of bays) {
-      // Usable vertical space inside bay (2m margin each side)
-      const margin = 2;
+      // Usable vertical space inside bay
+      const margin = spacingSettings.formworkBayMargin;
       const usableHeight = bay.height - margin * 2;
 
       // Max formwork that fit vertically in one column
       const maxPerColumn =
         usableHeight >= fwWidth
-          ? Math.floor((usableHeight + 0.5) / verticalStep)
+          ? Math.floor(
+              (usableHeight + spacingSettings.formworkVerticalGap) /
+                verticalStep,
+            )
           : 1;
 
-      // Horizontal start: 10m from the left edge of the bay
-      const baseX = bay.xPosition + 10;
+      // Horizontal start: left margin from the left edge of the bay
+      const baseX = bay.xPosition + spacingSettings.formworkLeftMargin;
 
       let placed = 0;
       let colIndex = 0;
@@ -311,11 +477,14 @@ export function LeftSidebar({
       while (placed < countPerBay) {
         const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
 
-        // Column x offset: each new column shifts right by fwLength + 2m
-        const colX = baseX + colIndex * (fwLength + 2);
+        // Column x offset: each new column shifts right by fwLength + column gap
+        const colX =
+          baseX + colIndex * (fwLength + spacingSettings.formworkColumnGap);
 
         // Column total height
-        const colHeight = inThisCol * fwWidth + (inThisCol - 1) * 0.5;
+        const colHeight =
+          inThisCol * fwWidth +
+          (inThisCol - 1) * spacingSettings.formworkVerticalGap;
         const colStartY =
           bay.yPosition + margin + (usableHeight - colHeight) / 2;
 
@@ -343,10 +512,10 @@ export function LeftSidebar({
 
     onAddRawElements(allElements);
     setFormworkDialogOpen(false);
-    setFormworkLength("");
-    setFormworkWidth("");
-    setFormworkHeight("");
-    setFormworkCount("1");
+    setFormworkLength("30");
+    setFormworkWidth("4");
+    setFormworkHeight("6");
+    setFormworkCount("30");
   };
 
   const visibleItems = libraryItems.filter((i) =>
@@ -357,7 +526,7 @@ export function LeftSidebar({
 
   return (
     <aside
-      className="w-56 shrink-0 bg-card border-r border-border flex flex-col overflow-hidden"
+      className="w-56 shrink-0 bg-card border-r border-border flex flex-col"
       data-ocid="sidebar.section"
     >
       {/* Search */}
@@ -375,7 +544,7 @@ export function LeftSidebar({
       </div>
 
       {/* Flat element list */}
-      <div className="flex-1 overflow-y-auto py-1">
+      <div className="flex-1 overflow-y-auto py-1 min-h-0">
         {visibleItems.length === 0 && (
           <p className="text-[10px] text-muted-foreground px-4 py-3">
             No elements yet. Add one below.
@@ -428,199 +597,6 @@ export function LeftSidebar({
             Girders
           </span>
           <div className="h-px flex-1 bg-border" />
-        </div>
-
-        {/* I-Girder item */}
-        <div className="mx-2 mb-1">
-          <div className="group flex items-center gap-1 rounded hover:bg-muted/60 transition-colors">
-            <button
-              type="button"
-              onClick={() => {
-                setIGirderDialogOpen((prev) => !prev);
-                if (!iGirderDialogOpen) {
-                  setIGirderLength("");
-                  setIGirderWidth("");
-                  setIGirderHeight("");
-                  setIGirderCount("1");
-                }
-              }}
-              className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
-              title="Click to configure and place I-Girders"
-              data-ocid="sidebar.girders.i-girder"
-            >
-              {/* I-Girder icon — horizontal orientation */}
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 18 18"
-                className="flex-shrink-0"
-                fill="none"
-                aria-hidden="true"
-              >
-                <rect
-                  x="1"
-                  y="1"
-                  width="16"
-                  height="3"
-                  rx="0.5"
-                  fill="#7c9cbf"
-                />
-                <rect x="7.5" y="4" width="3" height="10" fill="#7c9cbf" />
-                <rect
-                  x="1"
-                  y="14"
-                  width="16"
-                  height="3"
-                  rx="0.5"
-                  fill="#7c9cbf"
-                />
-              </svg>
-              <div className="min-w-0 text-left flex-1">
-                <div className="text-xs font-medium break-words leading-tight">
-                  I-Girder
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  Click to configure
-                </div>
-              </div>
-              <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-            </button>
-          </div>
-
-          {/* I-Girder inline config panel */}
-          {iGirderDialogOpen && (
-            <div className="mt-1 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-foreground">
-                  I-Girder Config
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIGirderDialogOpen(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-
-              <div className="flex gap-1.5">
-                <div className="flex-1 flex flex-col gap-0.5">
-                  <label
-                    htmlFor="ig-length"
-                    className="text-[10px] text-muted-foreground font-medium"
-                  >
-                    Length (m)
-                  </label>
-                  <Input
-                    id="ig-length"
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    placeholder="e.g. 20"
-                    value={iGirderLength}
-                    onChange={(e) => setIGirderLength(e.target.value)}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="flex-1 flex flex-col gap-0.5">
-                  <label
-                    htmlFor="ig-width"
-                    className="text-[10px] text-muted-foreground font-medium"
-                  >
-                    Width (m)
-                  </label>
-                  <Input
-                    id="ig-width"
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    placeholder="e.g. 1.5"
-                    value={iGirderWidth}
-                    onChange={(e) => setIGirderWidth(e.target.value)}
-                    className="h-7 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-1.5">
-                <div className="flex-1 flex flex-col gap-0.5">
-                  <label
-                    htmlFor="ig-height"
-                    className="text-[10px] text-muted-foreground font-medium"
-                  >
-                    Height (m)
-                  </label>
-                  <Input
-                    id="ig-height"
-                    type="number"
-                    min="0.1"
-                    step="0.1"
-                    placeholder="e.g. 1.5"
-                    value={iGirderHeight}
-                    onChange={(e) => setIGirderHeight(e.target.value)}
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="flex-1 flex flex-col gap-0.5">
-                  <label
-                    htmlFor="ig-count"
-                    className="text-[10px] text-muted-foreground font-medium"
-                  >
-                    No. of Girders
-                  </label>
-                  <Input
-                    id="ig-count"
-                    type="number"
-                    min="1"
-                    step="1"
-                    placeholder="e.g. 5"
-                    value={iGirderCount}
-                    onChange={(e) => setIGirderCount(e.target.value)}
-                    className="h-7 text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Preview info */}
-              {(iGirderLength || iGirderWidth) && (
-                <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
-                  <div className="text-[9px] text-muted-foreground">
-                    Horizontal · 0.05m gap between girders
-                  </div>
-                  <div className="text-[10px] font-medium text-foreground">
-                    {Math.max(1, Number.parseInt(iGirderCount) || 1)} girder
-                    {(Number.parseInt(iGirderCount) || 1) > 1 ? "s" : ""} ×{" "}
-                    {iGirderLength || "?"}m long × {iGirderWidth || "?"}m wide
-                  </div>
-                </div>
-              )}
-
-              <div className="flex gap-1.5">
-                <Button
-                  size="sm"
-                  className="flex-1 h-7 text-[11px]"
-                  onClick={handlePlaceIGirders}
-                  disabled={
-                    !iGirderLength ||
-                    !iGirderWidth ||
-                    !iGirderHeight ||
-                    !iGirderCount
-                  }
-                  data-ocid="igirder.submit_button"
-                >
-                  Place
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 h-7 text-[11px]"
-                  onClick={() => setIGirderDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Bay item */}
@@ -806,6 +782,192 @@ export function LeftSidebar({
         </div>
       </div>
 
+      {/* I-Girder item */}
+      <div className="mx-2 mb-1">
+        <div className="group flex items-center gap-1 rounded hover:bg-muted/60 transition-colors">
+          <button
+            type="button"
+            onClick={() => {
+              setIGirderDialogOpen((prev) => !prev);
+              if (!iGirderDialogOpen) {
+                setIGirderLength("30");
+                setIGirderWidth("0.8");
+                setIGirderHeight("2");
+                setIGirderCount("50");
+              }
+            }}
+            className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
+            title="Click to configure and place I-Girders"
+            data-ocid="sidebar.girders.i-girder"
+          >
+            {/* I-Girder icon — horizontal orientation */}
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 18 18"
+              className="flex-shrink-0"
+              fill="none"
+              aria-hidden="true"
+            >
+              <rect x="1" y="1" width="16" height="3" rx="0.5" fill="#7c9cbf" />
+              <rect x="7.5" y="4" width="3" height="10" fill="#7c9cbf" />
+              <rect
+                x="1"
+                y="14"
+                width="16"
+                height="3"
+                rx="0.5"
+                fill="#7c9cbf"
+              />
+            </svg>
+            <div className="min-w-0 text-left flex-1">
+              <div className="text-xs font-medium break-words leading-tight">
+                I-Girder
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                Click to configure
+              </div>
+            </div>
+            <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+          </button>
+        </div>
+
+        {/* I-Girder inline config panel */}
+        {iGirderDialogOpen && (
+          <div className="mt-1 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-foreground">
+                I-Girder Config
+              </span>
+              <button
+                type="button"
+                onClick={() => setIGirderDialogOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+
+            <div className="flex gap-1.5">
+              <div className="flex-1 flex flex-col gap-0.5">
+                <label
+                  htmlFor="ig-length"
+                  className="text-[10px] text-muted-foreground font-medium"
+                >
+                  Length (m)
+                </label>
+                <Input
+                  id="ig-length"
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  placeholder="e.g. 20"
+                  value={iGirderLength}
+                  onChange={(e) => setIGirderLength(e.target.value)}
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="flex-1 flex flex-col gap-0.5">
+                <label
+                  htmlFor="ig-width"
+                  className="text-[10px] text-muted-foreground font-medium"
+                >
+                  Width (m)
+                </label>
+                <Input
+                  id="ig-width"
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  placeholder="e.g. 1.5"
+                  value={iGirderWidth}
+                  onChange={(e) => setIGirderWidth(e.target.value)}
+                  className="h-7 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-1.5">
+              <div className="flex-1 flex flex-col gap-0.5">
+                <label
+                  htmlFor="ig-height"
+                  className="text-[10px] text-muted-foreground font-medium"
+                >
+                  Height (m)
+                </label>
+                <Input
+                  id="ig-height"
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  placeholder="e.g. 1.5"
+                  value={iGirderHeight}
+                  onChange={(e) => setIGirderHeight(e.target.value)}
+                  className="h-7 text-xs"
+                />
+              </div>
+              <div className="flex-1 flex flex-col gap-0.5">
+                <label
+                  htmlFor="ig-count"
+                  className="text-[10px] text-muted-foreground font-medium"
+                >
+                  No. of Girders
+                </label>
+                <Input
+                  id="ig-count"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="e.g. 5"
+                  value={iGirderCount}
+                  onChange={(e) => setIGirderCount(e.target.value)}
+                  className="h-7 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Preview info */}
+            {(iGirderLength || iGirderWidth) && (
+              <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
+                <div className="text-[9px] text-muted-foreground">
+                  Horizontal · 0.5m gap between girders
+                </div>
+                <div className="text-[10px] font-medium text-foreground">
+                  {Math.max(1, Number.parseInt(iGirderCount) || 1)} girder
+                  {(Number.parseInt(iGirderCount) || 1) > 1 ? "s" : ""} ×{" "}
+                  {iGirderLength || "?"}m long × {iGirderWidth || "?"}m wide
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                className="flex-1 h-7 text-[11px]"
+                onClick={handlePlaceIGirders}
+                disabled={
+                  !iGirderLength ||
+                  !iGirderWidth ||
+                  !iGirderHeight ||
+                  !iGirderCount
+                }
+                data-ocid="igirder.submit_button"
+              >
+                Place
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 h-7 text-[11px]"
+                onClick={() => setIGirderDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Permanent Formwork Section */}
       <div className="border-t border-border">
         <div className="px-3 py-1.5 flex items-center gap-1">
@@ -824,10 +986,10 @@ export function LeftSidebar({
               onClick={() => {
                 setFormworkDialogOpen((prev) => !prev);
                 if (!formworkDialogOpen) {
-                  setFormworkLength("");
-                  setFormworkWidth("");
-                  setFormworkHeight("");
-                  setFormworkCount("1");
+                  setFormworkLength("30");
+                  setFormworkWidth("4");
+                  setFormworkHeight("6");
+                  setFormworkCount("30");
                 }
               }}
               className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
@@ -1024,12 +1186,20 @@ export function LeftSidebar({
         {EQUIPMENT_ITEMS.map((item, idx) => (
           <div key={item.name}>
             <div className="group flex items-center gap-1 mx-2 mb-1 rounded hover:bg-muted/60 transition-colors">
-              {item.name === "Batching-Plant" ? (
+              {item.name === "Batching-Plant" ||
+              item.name === "Reinforcement-Cage" ||
+              item.name === "Factory-Shed" ? (
                 <button
                   type="button"
                   onClick={() => {
-                    setBatchingDialogOpen((prev) => !prev);
-                    setBatchingGirderCount("1");
+                    if (item.name === "Reinforcement-Cage") {
+                      setRcDialogOpen((prev) => !prev);
+                    } else if (item.name === "Factory-Shed") {
+                      handlePlaceFactoryShed();
+                    } else {
+                      setBatchingDialogOpen((prev) => !prev);
+                      setBatchingGirderCount("1");
+                    }
                   }}
                   className="flex-1 flex items-center gap-2 px-2 py-1.5 cursor-pointer min-w-0"
                   title="Click to configure and place"
@@ -1045,7 +1215,9 @@ export function LeftSidebar({
                       {item.name}
                     </div>
                     <div className="text-[10px] text-muted-foreground">
-                      L:{item.height}m × W:{item.width}m
+                      {item.name === "Factory-Shed"
+                        ? "Auto-sized from girders"
+                        : `L:${item.height}m × W:${item.width}m`}
                     </div>
                   </div>
                   <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -1141,6 +1313,122 @@ export function LeftSidebar({
                     className="flex-1 h-7 text-[11px]"
                     onClick={() => setBatchingDialogOpen(false)}
                     data-ocid="batching.cancel_button"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Reinforcement-Cage inline config panel */}
+            {item.name === "Reinforcement-Cage" && rcDialogOpen && (
+              <div className="mx-2 mb-2 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-foreground">
+                    Reinforcement-Cage Config
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRcDialogOpen(false)}
+                    className="text-muted-foreground hover:text-foreground"
+                    data-ocid="rc.close_button"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <label
+                    htmlFor="rc-length"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Length (m)
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    value={rcLength}
+                    onChange={(e) => setRcLength(e.target.value)}
+                    className="h-7 text-xs"
+                    id="rc-length"
+                    data-ocid="rc.length_input"
+                  />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <label
+                    htmlFor="rc-width"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Width (m)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={rcWidth}
+                    onChange={(e) => setRcWidth(e.target.value)}
+                    className="h-7 text-xs"
+                    id="rc-width"
+                    data-ocid="rc.width_input"
+                  />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <label
+                    htmlFor="rc-height"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    Height 3D (m)
+                  </label>
+                  <Input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={rcHeight}
+                    onChange={(e) => setRcHeight(e.target.value)}
+                    className="h-7 text-xs"
+                    id="rc-height"
+                    data-ocid="rc.height_input"
+                  />
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <label
+                    htmlFor="rc-count"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    No. of Cages
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={rcCount}
+                    onChange={(e) => setRcCount(e.target.value)}
+                    className="h-7 text-xs"
+                    id="rc-count"
+                    data-ocid="rc.count_input"
+                  />
+                </div>
+                {(rcLength || rcWidth) && (
+                  <div className="text-[10px] text-muted-foreground rounded bg-background border border-border p-1.5">
+                    {Math.max(1, Number.parseInt(rcCount) || 1)} cage(s) ×{" "}
+                    {rcLength || "?"}m long × {rcWidth || "?"}m wide
+                  </div>
+                )}
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-7 text-[11px]"
+                    onClick={handlePlaceReinforcementCages}
+                    data-ocid="rc.submit_button"
+                  >
+                    Place
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-[11px]"
+                    onClick={() => setRcDialogOpen(false)}
+                    data-ocid="rc.cancel_button"
                   >
                     Cancel
                   </Button>

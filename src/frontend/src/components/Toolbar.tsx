@@ -14,6 +14,7 @@ import {
   Redo2,
   RotateCw,
   Ruler,
+  Settings,
   Trash2,
   Type,
   Undo2,
@@ -42,6 +43,7 @@ interface ToolbarProps {
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  onOpenSettings?: () => void;
 }
 
 const TOOLS: {
@@ -81,6 +83,7 @@ export function Toolbar({
   onRedo,
   canUndo,
   canRedo,
+  onOpenSettings,
 }: ToolbarProps) {
   return (
     <div
@@ -300,6 +303,20 @@ export function Toolbar({
           <span className="text-white/40 text-xs">m</span>
         </div>
       </div>
+
+      {/* Settings button */}
+      {onOpenSettings && (
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          title="Spacing Settings"
+          className="ml-auto flex items-center gap-1.5 h-7 px-2.5 rounded text-xs text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+          data-ocid="toolbar.settings_button"
+        >
+          <Settings className="w-3.5 h-3.5" />
+          <span>Settings</span>
+        </button>
+      )}
     </div>
   );
 }
