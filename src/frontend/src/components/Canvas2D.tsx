@@ -61,8 +61,8 @@ function ElementShape({
   color: string;
   isSelected: boolean;
 }) {
-  const stroke = isSelected ? "#1E7ACB" : "rgba(0,0,0,0.55)";
-  const strokeWidth = isSelected ? 2 : 1;
+  const stroke = isSelected ? "#1E7ACB" : "none";
+  const strokeWidth = isSelected ? 2 : 0;
   const commonProps = { fill: color, stroke, strokeWidth, opacity: 0.9 };
 
   switch (shape) {
@@ -777,13 +777,6 @@ export function Canvas2D({
                         : "pointer",
                 }}
               >
-                <rect
-                  x={ex + 2}
-                  y={ey + 2}
-                  width={ew}
-                  height={eh}
-                  fill="rgba(0,0,0,0.12)"
-                />
                 {el.imageUrl ? (
                   <>
                     <image
