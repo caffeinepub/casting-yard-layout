@@ -61,7 +61,7 @@ function ElementShape({
   color: string;
   isSelected: boolean;
 }) {
-  const stroke = isSelected ? "#1E7ACB" : "rgba(0,0,0,0.2)";
+  const stroke = isSelected ? "#1E7ACB" : "rgba(0,0,0,0.55)";
   const strokeWidth = isSelected ? 2 : 1;
   const commonProps = { fill: color, stroke, strokeWidth, opacity: 0.9 };
 
