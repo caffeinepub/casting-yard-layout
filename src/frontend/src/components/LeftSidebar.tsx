@@ -46,7 +46,7 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     width: 0.8,
     height: 30,
     height3d: 2,
-    color: "#7c9cbf",
+    color: "#555555",
     defaultStatus: "planned",
     imageUrl:
       "/assets/uploads/image-019d33a4-4648-744f-86c1-eb304b8f6e32-1.png",
@@ -256,7 +256,7 @@ export function LeftSidebar({
             xPosition: colX,
             yPosition: colStartY + i * verticalStep,
             rotationAngle: 0,
-            color: "#7c9cbf",
+            color: "#c8c8c8",
             status: "planned",
             height3d,
             shape: "rectangle",
@@ -394,7 +394,7 @@ export function LeftSidebar({
             xPosition: colX,
             yPosition: colStartY + i * verticalStep,
             rotationAngle: 0,
-            color: "#7c9cbf",
+            color: "#555555",
             status: "planned",
             height3d,
             shape: "rectangle",
@@ -535,7 +535,7 @@ export function LeftSidebar({
             xPosition: colX,
             yPosition: colStartY + i * verticalStep,
             rotationAngle: 0,
-            color: "#a87c4f",
+            color: "#FF6B00",
             status: "planned",
             height3d,
             shape: "rectangle",
@@ -846,15 +846,15 @@ export function LeftSidebar({
               fill="none"
               aria-hidden="true"
             >
-              <rect x="1" y="1" width="16" height="3" rx="0.5" fill="#7c9cbf" />
-              <rect x="7.5" y="4" width="3" height="10" fill="#7c9cbf" />
+              <rect x="1" y="1" width="16" height="3" rx="0.5" fill="#c8c8c8" />
+              <rect x="7.5" y="4" width="3" height="10" fill="#c8c8c8" />
               <rect
                 x="1"
                 y="14"
                 width="16"
                 height="3"
                 rx="0.5"
-                fill="#7c9cbf"
+                fill="#c8c8c8"
               />
             </svg>
             <div className="min-w-0 text-left flex-1">
@@ -1049,7 +1049,7 @@ export function LeftSidebar({
                   width="16"
                   height="8"
                   rx="0"
-                  fill="#a87c4f"
+                  fill="#FF6B00"
                   stroke="#7a5a30"
                   strokeWidth="1"
                 />
