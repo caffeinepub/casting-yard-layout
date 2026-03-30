@@ -443,7 +443,7 @@ export function Canvas2D({
   };
 
   const handleContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button === 1) {
+    if (e.button === 1 || e.button === 2) {
       e.preventDefault();
       panDrag.current = {
         startX: e.clientX,
@@ -570,7 +570,7 @@ export function Canvas2D({
     };
 
     const onMouseUp = (e: MouseEvent) => {
-      if (e.button === 1) {
+      if (e.button === 1 || e.button === 2) {
         panDrag.current = null;
       }
 
@@ -740,6 +740,7 @@ export function Canvas2D({
         isDragOver ? "ring-2 ring-inset ring-blue-400" : ""
       }`}
       onMouseDown={handleContainerMouseDown}
+      onContextMenu={(e) => e.preventDefault()}
       onDragOver={handleDragOver}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={handleDrop}
@@ -808,7 +809,8 @@ export function Canvas2D({
               >
                 {el.imageUrl &&
                 (el.name === "Reinforcement-Cage" ||
-                  el.name === "Factory-Shed") ? (
+                  el.name === "Factory-Shed" ||
+                  el.name === "Road") ? (
                   <>
                     <defs>
                       <pattern
@@ -835,6 +837,49 @@ export function Canvas2D({
                       width={ew}
                       height={eh}
                       fill={`url(#tile-pattern-${el.id})`}
+                      style={{ pointerEvents: "none" }}
+                    />
+                    {isSelected && (
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill="none"
+                        stroke="#1E7ACB"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                      />
+                    )}
+                  </>
+                ) : el.imageUrl && el.name === "Road-Vertical" ? (
+                  <>
+                    <defs>
+                      <pattern
+                        id={`tile-pattern-v-${el.id}`}
+                        patternUnits="userSpaceOnUse"
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={ew}
+                      >
+                        <image
+                          href={el.imageUrl}
+                          x={0}
+                          y={0}
+                          width={ew}
+                          height={ew}
+                          transform={`rotate(90, ${ew / 2}, ${ew / 2})`}
+                          preserveAspectRatio="xMidYMid slice"
+                        />
+                      </pattern>
+                    </defs>
+                    <rect
+                      x={ex}
+                      y={ey}
+                      width={ew}
+                      height={eh}
+                      fill={`url(#tile-pattern-v-${el.id})`}
                       style={{ pointerEvents: "none" }}
                     />
                     {isSelected && (

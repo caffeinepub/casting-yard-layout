@@ -385,9 +385,29 @@ export default function App() {
   const handleUpdateElement = useCallback(
     (id: bigint, changes: Partial<YardElement>) => {
       pushHistory();
-      setElements((prev) =>
-        prev.map((e) => (e.id === id ? { ...e, ...changes } : e)),
-      );
+      // Sync shared visual properties (color, height3d, shape) to all elements with the same name
+      const syncKeys: (keyof YardElement)[] = ["color", "height3d", "shape"];
+      const hasSyncChange = syncKeys.some((k) => k in changes);
+      setElements((prev) => {
+        const target = prev.find((e) => e.id === id);
+        if (hasSyncChange && target) {
+          const syncChanges: Partial<YardElement> = {};
+          for (const k of syncKeys) {
+            if (k in changes)
+              (syncChanges as Record<string, unknown>)[k] = (
+                changes as Record<string, unknown>
+              )[k];
+          }
+          return prev.map((e) =>
+            e.id === id
+              ? { ...e, ...changes }
+              : e.name === target.name && hasSyncChange
+                ? { ...e, ...syncChanges }
+                : e,
+          );
+        }
+        return prev.map((e) => (e.id === id ? { ...e, ...changes } : e));
+      });
       refreshUndoRedo();
     },
     [pushHistory, refreshUndoRedo],

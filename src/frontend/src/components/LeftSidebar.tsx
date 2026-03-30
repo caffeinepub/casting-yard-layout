@@ -193,6 +193,26 @@ export function LeftSidebar({
     setBatchingGirderCount("1");
   };
 
+  // Returns the auto-start X for new elements on a bay.
+  // If any non-bay, non-road elements already exist on the bay, start after the
+  // rightmost edge of those elements + 2m spacing; otherwise use the default left margin.
+  const getAutoStartX = (bay: YardElement, defaultMargin: number): number => {
+    const BAY_TYPES = ["Bay", "Road", "Road-Vertical"];
+    const existing = placedElements.filter(
+      (el) =>
+        !BAY_TYPES.includes(el.name) &&
+        el.xPosition >= bay.xPosition &&
+        el.xPosition < bay.xPosition + bay.width &&
+        el.yPosition >= bay.yPosition &&
+        el.yPosition < bay.yPosition + bay.height,
+    );
+    if (existing.length === 0) {
+      return bay.xPosition + defaultMargin;
+    }
+    const maxRight = Math.max(...existing.map((el) => el.xPosition + el.width));
+    return maxRight + 2;
+  };
+
   const handlePlaceIGirders = () => {
     // Check if any Bay has been placed on the canvas
     const bays = placedElements.filter((el) => el.name === "Bay");
@@ -226,8 +246,8 @@ export function LeftSidebar({
             )
           : 1;
 
-      // Horizontal start: left margin from the left edge of the bay
-      const baseX = bay.xPosition + spacingSettings.iGirderLeftMargin;
+      // Horizontal start: after existing elements or default left margin
+      const baseX = getAutoStartX(bay, spacingSettings.iGirderLeftMargin);
 
       let placed = 0;
       let colIndex = 0;
@@ -338,6 +358,83 @@ export function LeftSidebar({
       }
     }
 
+    // Road above the top bay (0.5m gap above first bay)
+    const topBayY = startY;
+    allElements.unshift({
+      id: BigInt(Date.now()) * 100000n + 9999998n,
+      name: "Road",
+      elementType: "custom",
+      width: bLength,
+      height: ROAD_WIDTH,
+      xPosition: startX,
+      yPosition: topBayY - ROAD_WIDTH - 0.5,
+      rotationAngle: 0,
+      color: "#888888",
+      status: "planned",
+      height3d: 0.1,
+      shape: "rectangle",
+      imageUrl: ROAD_IMAGE,
+    });
+
+    // Road below the bottom bay (0.5m gap below last bay)
+    // curY at this point is after the last bay + last spacing (if any), but we want after the last bay
+    // The last bay ends at startY + totalHeight (bays only)
+    const lastBayEndY = startY + totalHeight;
+    allElements.push({
+      id: BigInt(Date.now()) * 100000n + 9999999n,
+      name: "Road",
+      elementType: "custom",
+      width: bLength,
+      height: ROAD_WIDTH,
+      xPosition: startX,
+      yPosition: lastBayEndY + 0.5,
+      rotationAngle: 0,
+      color: "#888888",
+      status: "planned",
+      height3d: 0.1,
+      shape: "rectangle",
+      imageUrl: ROAD_IMAGE,
+    });
+
+    // Vertical roads on left and right sides, spanning from top of top road to bottom of bottom road
+    const topRoadTop = topBayY - ROAD_WIDTH - 0.5;
+    const bottomRoadBottom = lastBayEndY + 0.5 + ROAD_WIDTH;
+    const verticalRoadHeight = bottomRoadBottom - topRoadTop;
+
+    // Left vertical road
+    allElements.push({
+      id: BigInt(Date.now()) * 100000n + 9999996n,
+      name: "Road-Vertical",
+      elementType: "custom",
+      width: ROAD_WIDTH,
+      height: verticalRoadHeight,
+      xPosition: startX - ROAD_WIDTH,
+      yPosition: topRoadTop,
+      rotationAngle: 0,
+      color: "#888888",
+      status: "planned",
+      height3d: 0.1,
+      shape: "rectangle",
+      imageUrl: ROAD_IMAGE,
+    });
+
+    // Right vertical road
+    allElements.push({
+      id: BigInt(Date.now()) * 100000n + 9999997n,
+      name: "Road-Vertical",
+      elementType: "custom",
+      width: ROAD_WIDTH,
+      height: verticalRoadHeight,
+      xPosition: startX + bLength,
+      yPosition: topRoadTop,
+      rotationAngle: 0,
+      color: "#888888",
+      status: "planned",
+      height3d: 0.1,
+      shape: "rectangle",
+      imageUrl: ROAD_IMAGE,
+    });
+
     onAddRawElements(allElements);
     setBayDialogOpen(false);
     setBayLength("");
@@ -370,7 +467,7 @@ export function LeftSidebar({
             )
           : 1;
 
-      const baseX = bay.xPosition + spacingSettings.rcLeftMargin;
+      const baseX = getAutoStartX(bay, spacingSettings.rcLeftMargin);
       let placed = 0;
       let colIndex = 0;
 
@@ -505,8 +602,8 @@ export function LeftSidebar({
             )
           : 1;
 
-      // Horizontal start: left margin from the left edge of the bay
-      const baseX = bay.xPosition + spacingSettings.formworkLeftMargin;
+      // Horizontal start: after existing elements or default left margin
+      const baseX = getAutoStartX(bay, spacingSettings.formworkLeftMargin);
 
       let placed = 0;
       let colIndex = 0;
