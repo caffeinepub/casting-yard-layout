@@ -291,19 +291,6 @@ export default function App() {
     [pushHistory, refreshUndoRedo],
   );
 
-  const handleUpdateElements = useCallback(
-    (updates: (Partial<YardElement> & { id: bigint })[]) => {
-      if (updates.length === 0) return;
-      setElements((prev) =>
-        prev.map((el) => {
-          const update = updates.find((u) => u.id === el.id);
-          return update ? { ...el, ...update } : el;
-        }),
-      );
-    },
-    [],
-  );
-
   const handleDropElement = useCallback(
     (item: LibraryItem, x: number, y: number) => {
       pushHistory();
@@ -961,7 +948,6 @@ export default function App() {
           onAddElement={handleAddElement}
           onAddMultipleElements={handleAddMultipleElements}
           onAddRawElements={handleAddRawElements}
-          onUpdateElements={handleUpdateElements}
           libraryItems={libraryItems}
           onLibraryChange={setLibraryItems}
           yardLength={yardLength}
