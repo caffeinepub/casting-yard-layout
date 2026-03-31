@@ -78,6 +78,9 @@ interface LeftSidebarProps {
     },
   ) => void;
   onAddRawElements: (elements: YardElement[]) => void;
+  onUpdateElements: (
+    updates: (Partial<YardElement> & { id: bigint })[],
+  ) => void;
   libraryItems: LibraryItem[];
   onLibraryChange: (items: LibraryItem[]) => void;
   yardLength: number;
@@ -90,6 +93,7 @@ export function LeftSidebar({
   onAddElement,
   onAddMultipleElements: _onAddMultipleElements,
   onAddRawElements,
+  onUpdateElements,
   libraryItems,
   onLibraryChange,
   yardLength,
@@ -178,29 +182,130 @@ export function LeftSidebar({
 
   const handlePlaceBatchingPlant = () => {
     const count = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
-    const UNIT_SIZE = 20; // each batching plant unit is 20×20m
 
-    // Find horizontal roads (exclude vertical roads)
+    // The 9 individually-sized sub-area blocks that make up one batching plant cluster
+    const subAreas = [
+      { name: "QA-Lab", width: 20, height: 20, color: "#3b82f6" },
+      { name: "RMC-Store", width: count * 1, height: 0.5, color: "#22c55e" },
+      { name: "RMC-Garage", width: count * 1, height: 0.5, color: "#f59e0b" },
+      { name: "Aggregates-10m", width: count * 1, height: 1, color: "#f97316" },
+      { name: "Aggregates-20m", width: count * 1, height: 1, color: "#ef4444" },
+      { name: "Crushed-Sand", width: count * 1, height: 3, color: "#eab308" },
+      {
+        name: "Sedimentation-Tank-1",
+        width: 20 / 3,
+        height: 20,
+        color: "#14b8a6",
+      },
+      {
+        name: "Sedimentation-Tank-2",
+        width: 20 / 3,
+        height: 20,
+        color: "#14b8a6",
+      },
+      {
+        name: "Sedimentation-Tank-3",
+        width: 20 / 3,
+        height: 20,
+        color: "#14b8a6",
+      },
+    ];
+
+    // Row-pack the sub-areas left-to-right within availableWidth.
+    // direction "up"   → first row sits immediately above originY, rows grow upward.
+    // direction "down" → first row sits immediately below originY, rows grow downward.
+    const buildCluster = (
+      originX: number,
+      originY: number,
+      availableWidth: number,
+      direction: "up" | "down",
+      idCounter: { v: number },
+    ): YardElement[] => {
+      const elements: YardElement[] = [];
+
+      // Greedy row packing
+      const rows: Array<Array<(typeof subAreas)[number]>> = [];
+      let currentRow: Array<(typeof subAreas)[number]> = [];
+      let currentRowWidth = 0;
+      for (const area of subAreas) {
+        if (
+          currentRow.length > 0 &&
+          currentRowWidth + area.width > availableWidth
+        ) {
+          rows.push(currentRow);
+          currentRow = [area];
+          currentRowWidth = area.width;
+        } else {
+          currentRow.push(area);
+          currentRowWidth += area.width;
+        }
+      }
+      if (currentRow.length > 0) rows.push(currentRow);
+
+      // Assign Y positions
+      let curY = originY;
+      const rowList = direction === "up" ? rows : rows;
+      for (const row of rowList) {
+        const rowHeight = Math.max(...row.map((a) => a.height));
+        let rowTop: number;
+        if (direction === "up") {
+          curY -= rowHeight;
+          rowTop = curY;
+        } else {
+          rowTop = curY;
+          curY += rowHeight;
+        }
+
+        let curX = originX;
+        for (const area of row) {
+          elements.push({
+            id: BigInt(Date.now()) * 10000n + BigInt(++idCounter.v),
+            name: area.name,
+            elementType: "custom",
+            width: area.width,
+            height: area.height,
+            xPosition: curX,
+            // Vertically centre shorter blocks within the row
+            yPosition: rowTop + (rowHeight - area.height) / 2,
+            rotationAngle: 0,
+            color: area.color,
+            status: "planned",
+            height3d: 8,
+            shape: "rectangle",
+          });
+          curX += area.width;
+        }
+      }
+      return elements;
+    };
+
+    const idCounter = { v: 0 };
+    const allElements: YardElement[] = [];
+
+    // Find roads
     const roads = placedElements.filter((el) => el.name === "Road");
 
     if (roads.length === 0) {
-      // No roads yet — fall back to single placement
-      onAddRawElements([
-        {
-          id: BigInt(Date.now()),
-          name: "Batching-Plant",
+      // Fallback: place all 9 blocks in a single row starting at (0, 0)
+      let curX = 0;
+      for (const area of subAreas) {
+        allElements.push({
+          id: BigInt(Date.now()) * 10000n + BigInt(++idCounter.v),
+          name: area.name,
           elementType: "custom",
-          width: UNIT_SIZE,
-          height: UNIT_SIZE,
-          xPosition: 0,
+          width: area.width,
+          height: area.height,
+          xPosition: curX,
           yPosition: 0,
           rotationAngle: 0,
-          color: "#22c55e",
+          color: area.color,
           status: "planned",
-          height3d: 12,
+          height3d: 8,
           shape: "rectangle",
-        },
-      ]);
+        });
+        curX += area.width;
+      }
+      onAddRawElements(allElements);
       setBatchingDialogOpen(false);
       setBatchingGirderCount("1");
       return;
@@ -217,62 +322,24 @@ export function LeftSidebar({
 
     const topRoadTop = topRoad.yPosition;
     const bottomRoadBottom = bottomRoad.yPosition + bottomRoad.height;
-
-    // Start X aligned with the road
     const roadX = topRoad.xPosition;
+    const availableWidth = topRoad.width;
 
-    // Available vertical space above / below the roads
-    const spaceAbove = topRoadTop;
-    const spaceBelow = yardWidth - bottomRoadBottom;
+    // One full cluster above the topmost road
+    allElements.push(
+      ...buildCluster(roadX, topRoadTop, availableWidth, "up", idCounter),
+    );
 
-    // How many 20m units fit vertically in each zone (at least 1)
-    const topUnitsPerCol = Math.max(1, Math.floor(spaceAbove / UNIT_SIZE));
-    const bottomUnitsPerCol = Math.max(1, Math.floor(spaceBelow / UNIT_SIZE));
-
-    let idOffset = 0;
-    const allElements: YardElement[] = [];
-
-    // TOP zone — fill vertically first (upward from road), then overflow right
-    for (let i = 0; i < count; i++) {
-      const col = Math.floor(i / topUnitsPerCol);
-      const row = i % topUnitsPerCol;
-      // row 0 is closest to the road, stacking upward
-      allElements.push({
-        id: BigInt(Date.now()) * 10000n + BigInt(++idOffset),
-        name: "Batching-Plant",
-        elementType: "custom",
-        width: UNIT_SIZE,
-        height: UNIT_SIZE,
-        xPosition: roadX + col * UNIT_SIZE,
-        yPosition: topRoadTop - (row + 1) * UNIT_SIZE,
-        rotationAngle: 0,
-        color: "#22c55e",
-        status: "planned",
-        height3d: 12,
-        shape: "rectangle",
-      });
-    }
-
-    // BOTTOM zone — fill vertically first (downward from road), then overflow right
-    for (let i = 0; i < count; i++) {
-      const col = Math.floor(i / bottomUnitsPerCol);
-      const row = i % bottomUnitsPerCol;
-      // row 0 is closest to the road, stacking downward
-      allElements.push({
-        id: BigInt(Date.now()) * 10000n + BigInt(++idOffset),
-        name: "Batching-Plant",
-        elementType: "custom",
-        width: UNIT_SIZE,
-        height: UNIT_SIZE,
-        xPosition: roadX + col * UNIT_SIZE,
-        yPosition: bottomRoadBottom + row * UNIT_SIZE,
-        rotationAngle: 0,
-        color: "#22c55e",
-        status: "planned",
-        height3d: 12,
-        shape: "rectangle",
-      });
-    }
+    // One full cluster below the bottommost road
+    allElements.push(
+      ...buildCluster(
+        roadX,
+        bottomRoadBottom,
+        availableWidth,
+        "down",
+        idCounter,
+      ),
+    );
 
     onAddRawElements(allElements);
     setBatchingDialogOpen(false);
@@ -312,68 +379,66 @@ export function LeftSidebar({
     const height3d = Number.parseFloat(iGirderHeight) || 2;
     const countPerBay = Math.max(1, Number.parseInt(iGirderCount) || 1);
 
-    // Gap between bottom edge of one girder and top edge of the next = 0.5m
-    // Step from top edge to top edge = girderWidth (girder itself) + 0.5m (gap)
-    const verticalStep = girderWidth + spacingSettings.iGirderVerticalGap;
+    const colGap = spacingSettings.iGirderColumnGap;
+    const vertGap = spacingSettings.iGirderVerticalGap;
+    const leftMargin = spacingSettings.iGirderLeftMargin;
+    const bayMargin = spacingSettings.iGirderBayMargin;
+
+    // Square-grid layout: grow cols and rows together
+    const cols = Math.ceil(Math.sqrt(countPerBay));
+    const rows = Math.ceil(countPerBay / cols);
+
+    const colStep = girderLength + colGap;
+    const rowStep = girderWidth + vertGap;
+
+    // Required bay dimensions to fit the grid
+    const requiredWidth = leftMargin + cols * colStep - colGap + 10; // 10m right padding
+    const requiredHeight = bayMargin + rows * rowStep - vertGap + bayMargin;
 
     const allElements: YardElement[] = [];
+    const bayUpdates: (Partial<YardElement> & { id: bigint })[] = [];
 
     for (const bay of bays) {
-      // Usable vertical space inside bay
-      const margin = spacingSettings.iGirderBayMargin;
-      const usableHeight = bay.height - margin * 2;
-
-      // Max girders that fit vertically in one column
-      const maxPerColumn =
-        usableHeight >= girderWidth
-          ? Math.floor(
-              (usableHeight + spacingSettings.iGirderVerticalGap) /
-                verticalStep,
-            )
-          : 1;
+      // Resize bay to fit the grid if needed
+      const newBayWidth = Math.max(bay.width, requiredWidth);
+      const newBayHeight = Math.max(bay.height, requiredHeight);
+      if (newBayWidth !== bay.width || newBayHeight !== bay.height) {
+        bayUpdates.push({
+          id: bay.id,
+          width: newBayWidth,
+          height: newBayHeight,
+        });
+      }
 
       // Horizontal start: after existing elements or default left margin
-      const baseX = getAutoStartX(bay, spacingSettings.iGirderLeftMargin);
+      const baseX = getAutoStartX(bay, leftMargin);
+      const startY = bay.yPosition + bayMargin;
 
       let placed = 0;
-      let colIndex = 0;
-
-      while (placed < countPerBay) {
-        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
-
-        // Column x offset: each new column shifts right by girderLength + column gap
-        const colX =
-          baseX + colIndex * (girderLength + spacingSettings.iGirderColumnGap);
-
-        // Column total height
-        const colHeight =
-          inThisCol * girderWidth +
-          (inThisCol - 1) * spacingSettings.iGirderVerticalGap;
-        const colStartY =
-          bay.yPosition + margin + (usableHeight - colHeight) / 2;
-
-        for (let i = 0; i < inThisCol; i++) {
+      for (let row = 0; row < rows && placed < countPerBay; row++) {
+        for (let col = 0; col < cols && placed < countPerBay; col++) {
           allElements.push({
             id: BigInt(Date.now()) * 100000n + BigInt(allElements.length),
             name: "I-Girder",
             elementType: "custom",
             width: girderLength,
             height: girderWidth,
-            xPosition: colX,
-            yPosition: colStartY + i * verticalStep,
+            xPosition: baseX + col * colStep,
+            yPosition: startY + row * rowStep,
             rotationAngle: 0,
             color: "#c8c8c8",
             status: "planned",
             height3d,
             shape: "rectangle",
           });
+          placed++;
         }
-
-        placed += inThisCol;
-        colIndex++;
       }
     }
 
+    if (bayUpdates.length > 0) {
+      onUpdateElements(bayUpdates);
+    }
     onAddRawElements(allElements);
     setIGirderDialogOpen(false);
     setIGirderLength("30");
@@ -540,42 +605,50 @@ export function LeftSidebar({
     const height3d = Number.parseFloat(rcHeight) || 2;
     const countPerBay = Math.max(1, Number.parseInt(rcCount) || 1);
 
-    const verticalStep = girderWidth + spacingSettings.rcVerticalGap;
+    const colGap = spacingSettings.rcColumnGap;
+    const vertGap = spacingSettings.rcVerticalGap;
+    const leftMargin = spacingSettings.rcLeftMargin;
+    const bayMargin = spacingSettings.rcBayMargin;
+
+    // Square-grid layout: grow cols and rows together
+    const cols = Math.ceil(Math.sqrt(countPerBay));
+    const rows = Math.ceil(countPerBay / cols);
+
+    const colStep = girderLength + colGap;
+    const rowStep = girderWidth + vertGap;
+
+    // Required bay dimensions to fit the grid
+    const requiredWidth = leftMargin + cols * colStep - colGap + 10;
+    const requiredHeight = bayMargin + rows * rowStep - vertGap + bayMargin;
+
     const allElements: YardElement[] = [];
+    const bayUpdates: (Partial<YardElement> & { id: bigint })[] = [];
 
     for (const bay of bays) {
-      const margin = spacingSettings.rcBayMargin;
-      const usableHeight = bay.height - margin * 2;
-      const maxPerColumn =
-        usableHeight >= girderWidth
-          ? Math.floor(
-              (usableHeight + spacingSettings.rcVerticalGap) / verticalStep,
-            )
-          : 1;
+      const newBayWidth = Math.max(bay.width, requiredWidth);
+      const newBayHeight = Math.max(bay.height, requiredHeight);
+      if (newBayWidth !== bay.width || newBayHeight !== bay.height) {
+        bayUpdates.push({
+          id: bay.id,
+          width: newBayWidth,
+          height: newBayHeight,
+        });
+      }
 
-      const baseX = getAutoStartX(bay, spacingSettings.rcLeftMargin);
+      const baseX = getAutoStartX(bay, leftMargin);
+      const startY = bay.yPosition + bayMargin;
+
       let placed = 0;
-      let colIndex = 0;
-
-      while (placed < countPerBay) {
-        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
-        const colX =
-          baseX + colIndex * (girderLength + spacingSettings.rcColumnGap);
-        const colHeight =
-          inThisCol * girderWidth +
-          (inThisCol - 1) * spacingSettings.rcVerticalGap;
-        const colStartY =
-          bay.yPosition + margin + (usableHeight - colHeight) / 2;
-
-        for (let i = 0; i < inThisCol; i++) {
+      for (let row = 0; row < rows && placed < countPerBay; row++) {
+        for (let col = 0; col < cols && placed < countPerBay; col++) {
           allElements.push({
             id: BigInt(Date.now()) * 100000n + BigInt(allElements.length),
             name: "Reinforcement-Cage",
             elementType: "custom",
             width: girderLength,
             height: girderWidth,
-            xPosition: colX,
-            yPosition: colStartY + i * verticalStep,
+            xPosition: baseX + col * colStep,
+            yPosition: startY + row * rowStep,
             rotationAngle: 0,
             color: "#555555",
             status: "planned",
@@ -584,13 +657,14 @@ export function LeftSidebar({
             imageUrl:
               "/assets/uploads/image-019d33a4-4648-744f-86c1-eb304b8f6e32-1.png",
           });
+          placed++;
         }
-
-        placed += inThisCol;
-        colIndex++;
       }
     }
 
+    if (bayUpdates.length > 0) {
+      onUpdateElements(bayUpdates);
+    }
     onAddRawElements(allElements);
     setRcDialogOpen(false);
     setRcLength("30");
@@ -669,67 +743,64 @@ export function LeftSidebar({
     const height3d = Number.parseFloat(formworkHeight) || 6;
     const countPerBay = Math.max(1, Number.parseInt(formworkCount) || 1);
 
-    // Step from top edge to top edge = fwWidth + vertical gap
-    const verticalStep = fwWidth + spacingSettings.formworkVerticalGap;
+    const colGap = spacingSettings.formworkColumnGap;
+    const vertGap = spacingSettings.formworkVerticalGap;
+    const leftMargin = spacingSettings.formworkLeftMargin;
+    const bayMargin = spacingSettings.formworkBayMargin;
+
+    // Square-grid layout: grow cols and rows together
+    const cols = Math.ceil(Math.sqrt(countPerBay));
+    const rows = Math.ceil(countPerBay / cols);
+
+    const colStep = fwLength + colGap;
+    const rowStep = fwWidth + vertGap;
+
+    // Required bay dimensions to fit the grid
+    const requiredWidth = leftMargin + cols * colStep - colGap + 10;
+    const requiredHeight = bayMargin + rows * rowStep - vertGap + bayMargin;
 
     const allElements: YardElement[] = [];
+    const bayUpdates: (Partial<YardElement> & { id: bigint })[] = [];
 
     for (const bay of bays) {
-      // Usable vertical space inside bay
-      const margin = spacingSettings.formworkBayMargin;
-      const usableHeight = bay.height - margin * 2;
+      const newBayWidth = Math.max(bay.width, requiredWidth);
+      const newBayHeight = Math.max(bay.height, requiredHeight);
+      if (newBayWidth !== bay.width || newBayHeight !== bay.height) {
+        bayUpdates.push({
+          id: bay.id,
+          width: newBayWidth,
+          height: newBayHeight,
+        });
+      }
 
-      // Max formwork that fit vertically in one column
-      const maxPerColumn =
-        usableHeight >= fwWidth
-          ? Math.floor(
-              (usableHeight + spacingSettings.formworkVerticalGap) /
-                verticalStep,
-            )
-          : 1;
-
-      // Horizontal start: after existing elements or default left margin
-      const baseX = getAutoStartX(bay, spacingSettings.formworkLeftMargin);
+      const baseX = getAutoStartX(bay, leftMargin);
+      const startY = bay.yPosition + bayMargin;
 
       let placed = 0;
-      let colIndex = 0;
-
-      while (placed < countPerBay) {
-        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
-
-        // Column x offset: each new column shifts right by fwLength + column gap
-        const colX =
-          baseX + colIndex * (fwLength + spacingSettings.formworkColumnGap);
-
-        // Column total height
-        const colHeight =
-          inThisCol * fwWidth +
-          (inThisCol - 1) * spacingSettings.formworkVerticalGap;
-        const colStartY =
-          bay.yPosition + margin + (usableHeight - colHeight) / 2;
-
-        for (let i = 0; i < inThisCol; i++) {
+      for (let row = 0; row < rows && placed < countPerBay; row++) {
+        for (let col = 0; col < cols && placed < countPerBay; col++) {
           allElements.push({
             id: BigInt(Date.now()) * 100000n + BigInt(allElements.length),
             name: "Box-I-Girder-Formwork",
             elementType: "custom",
             width: fwLength,
             height: fwWidth,
-            xPosition: colX,
-            yPosition: colStartY + i * verticalStep,
+            xPosition: baseX + col * colStep,
+            yPosition: startY + row * rowStep,
             rotationAngle: 0,
             color: "#FF6B00",
             status: "planned",
             height3d,
             shape: "rectangle",
           });
+          placed++;
         }
-
-        placed += inThisCol;
-        colIndex++;
       }
     }
 
+    if (bayUpdates.length > 0) {
+      onUpdateElements(bayUpdates);
+    }
     onAddRawElements(allElements);
     setFormworkDialogOpen(false);
     setFormworkLength("30");
@@ -1507,15 +1578,74 @@ export function LeftSidebar({
 
                 {/* Info panel */}
                 <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
-                  <div className="text-[9px] text-muted-foreground">
-                    1 girder = 35 m³ concrete = 20×20m
+                  <div className="text-[9px] text-muted-foreground font-semibold mb-0.5">
+                    Sub-areas for {girderCount} girder
+                    {girderCount !== 1 ? "s" : ""}:
                   </div>
-                  <div className="text-[10px] font-medium text-foreground">
-                    Total space: {girderCount * 20}m × 20m
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    Total concrete: {girderCount * 35} m³
-                  </div>
+                  {[
+                    { name: "QA-Lab", w: 20, h: 20, color: "#3b82f6" },
+                    {
+                      name: "RMC-Store",
+                      w: girderCount * 1,
+                      h: 0.5,
+                      color: "#22c55e",
+                    },
+                    {
+                      name: "RMC-Garage",
+                      w: girderCount * 1,
+                      h: 0.5,
+                      color: "#f59e0b",
+                    },
+                    {
+                      name: "Aggregates-10m",
+                      w: girderCount * 1,
+                      h: 1,
+                      color: "#f97316",
+                    },
+                    {
+                      name: "Aggregates-20m",
+                      w: girderCount * 1,
+                      h: 1,
+                      color: "#ef4444",
+                    },
+                    {
+                      name: "Crushed-Sand",
+                      w: girderCount * 1,
+                      h: 3,
+                      color: "#eab308",
+                    },
+                    {
+                      name: "Sedimentation-Tank-1",
+                      w: Number((20 / 3).toFixed(2)),
+                      h: 20,
+                      color: "#14b8a6",
+                    },
+                    {
+                      name: "Sedimentation-Tank-2",
+                      w: Number((20 / 3).toFixed(2)),
+                      h: 20,
+                      color: "#14b8a6",
+                    },
+                    {
+                      name: "Sedimentation-Tank-3",
+                      w: Number((20 / 3).toFixed(2)),
+                      h: 20,
+                      color: "#14b8a6",
+                    },
+                  ].map((area) => (
+                    <div key={area.name} className="flex items-center gap-1">
+                      <span
+                        className="inline-block w-2 h-2 rounded-sm shrink-0"
+                        style={{ background: area.color }}
+                      />
+                      <span className="text-[9px] text-muted-foreground truncate flex-1">
+                        {area.name}
+                      </span>
+                      <span className="text-[9px] font-medium text-foreground shrink-0">
+                        {area.w}×{area.h}m
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="flex gap-1.5">

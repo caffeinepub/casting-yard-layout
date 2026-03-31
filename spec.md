@@ -1,31 +1,33 @@
 # Casting Yard Pro
 
 ## Current State
-The Batching-Plant is placed as individual 20×20m image-tiled elements. When N girders are configured, it places N elements per zone (above top road, below bottom road) each showing a tiling image.
+I-Girders, Formwork, and Reinforcement-Cages are placed on Bays in a single-axis stacking pattern:
+- Girders stack **only vertically** within a column until the Bay height is exhausted
+- After the column fills, the next column starts to the right (+girderLength + 2m gap)
+- The Bay does NOT auto-resize; girders just pack into whatever Bay size was set at placement time
 
 ## Requested Changes (Diff)
 
 ### Add
-- `BATCHING_PLANT_AREAS` constant in `Canvas2D.tsx`: an array of 9 sub-area definitions (label + color), based on the uploaded diagram:
-  1. QA/QC LAB
-  2. RMC STORE
-  3. RMC GARAGE
-  4. AGGREGATES 10MM
-  5. AGGREGATES 20MM
-  6. CRUSHED SAND
-  7. SEDIMENTATION TANK-3
-  8. SEDIMENTATION TANK-2
-  9. SEDIMENTATION TANK-1
+- Bay auto-sizing logic: when I-Girders (and Formwork/Reinforcement-Cage) are placed, the Bay should automatically resize to accommodate them in a **grid arrangement** that grows in BOTH horizontal and vertical directions
+- Grid layout calculation: `cols = ceil(sqrt(N))`, `rows = ceil(N / cols)` — so 1→1×1, 4→2×2, 9→3×3, etc.
+- Bay auto-resize formula:
+  - New bay length = leftMargin(10m) + cols × (girderLength + colGap) − colGap + rightPadding(10m)
+  - New bay height = topMargin(2m) + rows × (girderWidth + vertGap) − vertGap + bottomPadding(2m)
+- All roads and grouped elements on the Bay should update their positions after Bay resize
 
 ### Modify
-- `Canvas2D.tsx`: Add a special rendering branch for `el.name === "Batching-Plant"`. Instead of showing a tiling image, render the element as 9 equally-wide vertical strips, each with a distinct light background color, a border between them, and the sub-area label rotated 90° inside. Suppress the generic element name text for Batching-Plant.
-- `LeftSidebar.tsx` — `handlePlaceBatchingPlant`: Remove `imageUrl` from placed Batching-Plant YardElement objects so the custom Canvas2D renderer takes over.
+- I-Girder placement in `handlePlaceIGirders`: instead of filling one column then overflowing right, use the square-grid arrangement. Place `cols` columns × `rows` rows, starting from left margin of bay, spacing girderWidth + 0.5m vertically, girderLength + 2m horizontally
+- The Bay element placed first should auto-resize when girders are placed on it (resize the bay element in the elements array to the computed dimensions, keeping its center position)
+- Same grid logic applied to Formwork and Reinforcement-Cage placement
+- When the Bay resizes, roads between/above/below bays should be recalculated/moved accordingly
 
 ### Remove
-- Nothing removed from existing features.
+- Nothing removed
 
 ## Implementation Plan
-1. Add `BATCHING_PLANT_AREAS` array constant near the top of `Canvas2D.tsx`.
-2. In the Canvas2D elements rendering loop, add a branch: `el.name === 'Batching-Plant'` → render 9 sub-area `<rect>` elements with proportional widths, colored backgrounds, inner borders, and rotated text labels. Show a bold outer border (highlighted if selected).
-3. Conditionally skip the generic `{el.name}` text label for Batching-Plant elements.
-4. In `LeftSidebar.tsx`, remove `imageUrl` from Batching-Plant YardElements in `handlePlaceBatchingPlant` (both the fallback single-element case and the top/bottom zone loop).
+1. In `LeftSidebar.tsx`, create a helper `computeGridLayout(N, itemW, itemH, leftMargin, topMargin, colGap, vertGap)` that returns `{ cols, rows, bayLength, bayWidth, positions[] }`
+2. In `handlePlaceIGirders`: call `computeGridLayout`, then call `onResizeBay(bayId, newLength, newWidth)` to resize each Bay before adding girder elements. Place girders at the computed grid positions.
+3. In `handlePlaceFormwork` and `handlePlaceReinforcementCage`: apply the same grid layout and Bay resize logic
+4. In `App.tsx` (or wherever Bay elements live), implement `onResizeBay(id, newWidth, newHeight)` that updates the bay element dimensions and repositions it (keeping center), then re-triggers road recalculation
+5. When the Bay resizes, grouped child elements (I-Girders, Formwork etc.) that are already on the bay should be re-positioned relative to the new bay left edge (keep 10m left margin from the new bay x)
