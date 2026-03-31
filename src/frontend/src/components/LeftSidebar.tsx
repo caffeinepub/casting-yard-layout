@@ -182,7 +182,7 @@ export function LeftSidebar({
 
   const handlePlaceBatchingPlant = () => {
     const count = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
-    const unitWidth = 20; // each unit is 20m wide (horizontal)
+    const UNIT_SIZE = 20; // each batching plant unit is 20×20m
     const PLANT_IMAGE = batchingPlantItem!.imageUrl;
 
     // Find horizontal roads (exclude vertical roads)
@@ -195,8 +195,8 @@ export function LeftSidebar({
           id: BigInt(Date.now()),
           name: "Batching-Plant",
           elementType: "custom",
-          width: unitWidth,
-          height: 20,
+          width: UNIT_SIZE,
+          height: UNIT_SIZE,
           xPosition: 0,
           yPosition: 0,
           rotationAngle: 0,
@@ -224,27 +224,33 @@ export function LeftSidebar({
     const topRoadTop = topRoad.yPosition;
     const bottomRoadBottom = bottomRoad.yPosition + bottomRoad.height;
 
-    // Available vertical space above/below the roads (clamped to >=20m if too small)
-    const spaceAbove = topRoadTop;
-    const spaceBelow = yardWidth - bottomRoadBottom;
-    const topHeight = spaceAbove >= 5 ? spaceAbove : 20;
-    const bottomHeight = spaceBelow >= 5 ? spaceBelow : 20;
-
-    // Start X at road position
+    // Start X aligned with the road
     const roadX = topRoad.xPosition;
 
+    // Available vertical space above / below the roads
+    const spaceAbove = topRoadTop;
+    const spaceBelow = yardWidth - bottomRoadBottom;
+
+    // How many 20m units fit vertically in each zone (at least 1)
+    const topUnitsPerCol = Math.max(1, Math.floor(spaceAbove / UNIT_SIZE));
+    const bottomUnitsPerCol = Math.max(1, Math.floor(spaceBelow / UNIT_SIZE));
+
+    let idOffset = 0;
     const allElements: YardElement[] = [];
 
-    // Top row — units tiling horizontally above the topmost road
+    // TOP zone — fill vertically first (upward from road), then overflow right
     for (let i = 0; i < count; i++) {
+      const col = Math.floor(i / topUnitsPerCol);
+      const row = i % topUnitsPerCol;
+      // row 0 is closest to the road, stacking upward
       allElements.push({
-        id: BigInt(Date.now()) * 10000n + BigInt(i + 1),
+        id: BigInt(Date.now()) * 10000n + BigInt(++idOffset),
         name: "Batching-Plant",
         elementType: "custom",
-        width: unitWidth,
-        height: topHeight,
-        xPosition: roadX + i * unitWidth,
-        yPosition: topRoadTop - topHeight,
+        width: UNIT_SIZE,
+        height: UNIT_SIZE,
+        xPosition: roadX + col * UNIT_SIZE,
+        yPosition: topRoadTop - (row + 1) * UNIT_SIZE,
         rotationAngle: 0,
         color: "#22c55e",
         status: "planned",
@@ -254,16 +260,19 @@ export function LeftSidebar({
       });
     }
 
-    // Bottom row — units tiling horizontally below the bottommost road
+    // BOTTOM zone — fill vertically first (downward from road), then overflow right
     for (let i = 0; i < count; i++) {
+      const col = Math.floor(i / bottomUnitsPerCol);
+      const row = i % bottomUnitsPerCol;
+      // row 0 is closest to the road, stacking downward
       allElements.push({
-        id: BigInt(Date.now()) * 10000n + BigInt(count + i + 1),
+        id: BigInt(Date.now()) * 10000n + BigInt(++idOffset),
         name: "Batching-Plant",
         elementType: "custom",
-        width: unitWidth,
-        height: bottomHeight,
-        xPosition: roadX + i * unitWidth,
-        yPosition: bottomRoadBottom,
+        width: UNIT_SIZE,
+        height: UNIT_SIZE,
+        xPosition: roadX + col * UNIT_SIZE,
+        yPosition: bottomRoadBottom + row * UNIT_SIZE,
         rotationAngle: 0,
         color: "#22c55e",
         status: "planned",
