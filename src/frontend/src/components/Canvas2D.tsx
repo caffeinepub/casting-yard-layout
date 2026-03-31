@@ -36,6 +36,18 @@ const SCALE_PX_PER_M: Record<ScaleOption, number> = {
 const GRID_STEP = 10; // meters
 const SNAP_THRESHOLD = 3; // meters
 
+const BATCHING_PLANT_AREAS = [
+  { label: "QA/QC LAB", color: "#e8f5e9" },
+  { label: "RMC STORE", color: "#e3f2fd" },
+  { label: "RMC GARAGE", color: "#fff3e0" },
+  { label: "AGGREGATES 10MM", color: "#fce4ec" },
+  { label: "AGGREGATES 20MM", color: "#f3e5f5" },
+  { label: "CRUSHED SAND", color: "#fffde7" },
+  { label: "SEDIMENTATION TANK-3", color: "#e1f5fe" },
+  { label: "SEDIMENTATION TANK-2", color: "#e0f7fa" },
+  { label: "SEDIMENTATION TANK-1", color: "#e0f2f1" },
+];
+
 const HANDLE_POSITIONS = ["tl", "tr", "bl", "br"] as const;
 
 let textLabelCounter = BigInt(10000);
@@ -807,10 +819,79 @@ export function Canvas2D({
                         : "pointer",
                 }}
               >
-                {el.imageUrl &&
-                (el.name === "Reinforcement-Cage" ||
-                  el.name === "Factory-Shed" ||
-                  el.name === "Road") ? (
+                {el.name === "Batching-Plant" ? (
+                  <>
+                    {BATCHING_PLANT_AREAS.map((area, areaIdx) => {
+                      const areaW = ew / BATCHING_PLANT_AREAS.length;
+                      const areaX = ex + areaIdx * areaW;
+                      const lines = area.label.split(" ");
+                      const fontSize = Math.min(9, Math.max(5, areaW * 0.55));
+                      return (
+                        <g key={area.label} style={{ pointerEvents: "none" }}>
+                          <rect
+                            x={areaX}
+                            y={ey}
+                            width={areaW}
+                            height={eh}
+                            fill={area.color}
+                            stroke="#94a3b8"
+                            strokeWidth={0.5}
+                          />
+                          <text
+                            transform={`translate(${areaX + areaW / 2}, ${ey + eh / 2}) rotate(-90)`}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fontSize={fontSize}
+                            fontFamily="sans-serif"
+                            fontWeight="600"
+                            fill="#374151"
+                          >
+                            {lines.map((line, li) => (
+                              <tspan
+                                key={`${area.label}-${li}`}
+                                x={0}
+                                dy={
+                                  li === 0
+                                    ? -(lines.length - 1) * fontSize * 0.6
+                                    : fontSize * 1.2
+                                }
+                              >
+                                {line}
+                              </tspan>
+                            ))}
+                          </text>
+                        </g>
+                      );
+                    })}
+                    {/* Outer border */}
+                    <rect
+                      x={ex}
+                      y={ey}
+                      width={ew}
+                      height={eh}
+                      fill="none"
+                      stroke={isSelected ? "#1E7ACB" : "#374151"}
+                      strokeWidth={isSelected ? 2 : 1}
+                      strokeDasharray={isSelected ? "4 2" : undefined}
+                    />
+                    {/* "BATCHING PLANT" title above the group */}
+                    <text
+                      x={cx}
+                      y={ey - 4}
+                      textAnchor="middle"
+                      fontSize={Math.min(9, Math.max(6, ew / 20))}
+                      fontWeight="700"
+                      fontFamily="sans-serif"
+                      fill="#374151"
+                      style={{ pointerEvents: "none" }}
+                    >
+                      BATCHING PLANT
+                    </text>
+                  </>
+                ) : el.imageUrl &&
+                  (el.name === "Reinforcement-Cage" ||
+                    el.name === "Factory-Shed" ||
+                    el.name === "Road") ? (
                   <>
                     <defs>
                       <pattern
@@ -975,17 +1056,19 @@ export function Canvas2D({
                     pxPerM={pxPerM}
                   />
                 )}
-                <text
-                  x={cx}
-                  y={cy + 3.5}
-                  textAnchor="middle"
-                  fontSize={Math.min(10, Math.max(7, ew / 4))}
-                  fontWeight="700"
-                  fill="rgba(0,0,0,0.75)"
-                  style={{ pointerEvents: "none" }}
-                >
-                  {el.name.split(" ").slice(-1)[0]}
-                </text>
+                {el.name !== "Batching-Plant" && (
+                  <text
+                    x={cx}
+                    y={cy + 3.5}
+                    textAnchor="middle"
+                    fontSize={Math.min(10, Math.max(7, ew / 4))}
+                    fontWeight="700"
+                    fill="rgba(0,0,0,0.75)"
+                    style={{ pointerEvents: "none" }}
+                  >
+                    {el.name.split(" ").slice(-1)[0]}
+                  </text>
+                )}
                 {/* Snap highlight */}
                 {isSnapTarget && (
                   <rect

@@ -1,29 +1,31 @@
 # Casting Yard Pro
 
 ## Current State
-When placing a Batching-Plant, the config panel lets the user enter I-girder count. Each girder = 20×20m space. A single element of size (count×20m) × 20m is added to the canvas at a default position. There is no automatic positioning relative to roads.
+The Batching-Plant is placed as individual 20×20m image-tiled elements. When N girders are configured, it places N elements per zone (above top road, below bottom road) each showing a tiling image.
 
 ## Requested Changes (Diff)
 
 ### Add
-- When the user clicks Place in the Batching-Plant config:
-  - Find all horizontal `Road` elements from `placedElements`
-  - Determine the topmost road (smallest yPosition) and bottommost road (largest yPosition + height)
-  - Auto-place 2 rows of Batching-Plant units:
-    - **Top row**: above the topmost road. Each unit height = available vertical space above the top road (topRoadY). Multiple units tile horizontally (one per girder count unit), each 20m wide.
-    - **Bottom row**: below the bottommost road. Each unit height = available vertical space below (yardWidth - bottomRoadBottom). Multiple units tile horizontally.
-  - If available vertical space <= 5m, fall back to 20m height per unit.
-  - If no roads exist on canvas, fall back to placing a single unit at origin.
+- `BATCHING_PLANT_AREAS` constant in `Canvas2D.tsx`: an array of 9 sub-area definitions (label + color), based on the uploaded diagram:
+  1. QA/QC LAB
+  2. RMC STORE
+  3. RMC GARAGE
+  4. AGGREGATES 10MM
+  5. AGGREGATES 20MM
+  6. CRUSHED SAND
+  7. SEDIMENTATION TANK-3
+  8. SEDIMENTATION TANK-2
+  9. SEDIMENTATION TANK-1
 
 ### Modify
-- `handlePlaceBatchingPlant` in `LeftSidebar.tsx`: replace the single `onAddElement` call with `onAddRawElements` call that places 2 rows of N unit elements (N = girderCount) using the logic above.
+- `Canvas2D.tsx`: Add a special rendering branch for `el.name === "Batching-Plant"`. Instead of showing a tiling image, render the element as 9 equally-wide vertical strips, each with a distinct light background color, a border between them, and the sub-area label rotated 90° inside. Suppress the generic element name text for Batching-Plant.
+- `LeftSidebar.tsx` — `handlePlaceBatchingPlant`: Remove `imageUrl` from placed Batching-Plant YardElement objects so the custom Canvas2D renderer takes over.
 
 ### Remove
-- Nothing removed.
+- Nothing removed from existing features.
 
 ## Implementation Plan
-1. In `handlePlaceBatchingPlant`, filter `placedElements` for `Road` (not `Road-Vertical`) elements.
-2. Find `topRoad` (min yPosition) and `bottomRoad` (max yPosition + height).
-3. Compute `topHeight = topRoad.yPosition` (clamped to ≥ 20m if < 5m), `bottomHeight = yardWidth - (bottomRoad.yPosition + bottomRoad.height)` (same clamp).
-4. Build `allElements` array with N top units + N bottom units, each 20m wide, tiling from the road's xPosition.
-5. Call `onAddRawElements(allElements)` instead of `onAddElement`.
+1. Add `BATCHING_PLANT_AREAS` array constant near the top of `Canvas2D.tsx`.
+2. In the Canvas2D elements rendering loop, add a branch: `el.name === 'Batching-Plant'` → render 9 sub-area `<rect>` elements with proportional widths, colored backgrounds, inner borders, and rotated text labels. Show a bold outer border (highlighted if selected).
+3. Conditionally skip the generic `{el.name}` text label for Batching-Plant elements.
+4. In `LeftSidebar.tsx`, remove `imageUrl` from Batching-Plant YardElements in `handlePlaceBatchingPlant` (both the fallback single-element case and the top/bottom zone loop).

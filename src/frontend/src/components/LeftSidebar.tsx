@@ -138,10 +138,6 @@ export function LeftSidebar({
   const [rcHeight, setRcHeight] = useState("2");
   const [rcCount, setRcCount] = useState("50");
 
-  const batchingPlantItem = EQUIPMENT_ITEMS.find(
-    (i) => i.name === "Batching-Plant",
-  )!;
-
   const handleDragStart = (e: React.DragEvent, item: LibraryItem) => {
     e.dataTransfer.setData("application/yard-element", JSON.stringify(item));
     e.dataTransfer.effectAllowed = "copy";
@@ -183,7 +179,6 @@ export function LeftSidebar({
   const handlePlaceBatchingPlant = () => {
     const count = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
     const UNIT_SIZE = 20; // each batching plant unit is 20×20m
-    const PLANT_IMAGE = batchingPlantItem!.imageUrl;
 
     // Find horizontal roads (exclude vertical roads)
     const roads = placedElements.filter((el) => el.name === "Road");
@@ -204,7 +199,6 @@ export function LeftSidebar({
           status: "planned",
           height3d: 12,
           shape: "rectangle",
-          imageUrl: PLANT_IMAGE,
         },
       ]);
       setBatchingDialogOpen(false);
@@ -256,7 +250,6 @@ export function LeftSidebar({
         status: "planned",
         height3d: 12,
         shape: "rectangle",
-        imageUrl: PLANT_IMAGE,
       });
     }
 
@@ -278,7 +271,6 @@ export function LeftSidebar({
         status: "planned",
         height3d: 12,
         shape: "rectangle",
-        imageUrl: PLANT_IMAGE,
       });
     }
 
