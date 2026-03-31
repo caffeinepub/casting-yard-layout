@@ -182,13 +182,98 @@ export function LeftSidebar({
 
   const handlePlaceBatchingPlant = () => {
     const count = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
-    const calculatedLength = count * 20;
-    const calculatedWidth = 20;
-    onAddElement({
-      ...batchingPlantItem,
-      height: calculatedLength,
-      width: calculatedWidth,
-    });
+    const unitWidth = 20; // each unit is 20m wide (horizontal)
+    const PLANT_IMAGE = batchingPlantItem!.imageUrl;
+
+    // Find horizontal roads (exclude vertical roads)
+    const roads = placedElements.filter((el) => el.name === "Road");
+
+    if (roads.length === 0) {
+      // No roads yet — fall back to single placement
+      onAddRawElements([
+        {
+          id: BigInt(Date.now()),
+          name: "Batching-Plant",
+          elementType: "custom",
+          width: unitWidth,
+          height: 20,
+          xPosition: 0,
+          yPosition: 0,
+          rotationAngle: 0,
+          color: "#22c55e",
+          status: "planned",
+          height3d: 12,
+          shape: "rectangle",
+          imageUrl: PLANT_IMAGE,
+        },
+      ]);
+      setBatchingDialogOpen(false);
+      setBatchingGirderCount("1");
+      return;
+    }
+
+    // Topmost road (smallest yPosition)
+    const topRoad = roads.reduce((prev, curr) =>
+      curr.yPosition < prev.yPosition ? curr : prev,
+    );
+    // Bottommost road (largest yPosition + height)
+    const bottomRoad = roads.reduce((prev, curr) =>
+      curr.yPosition + curr.height > prev.yPosition + prev.height ? curr : prev,
+    );
+
+    const topRoadTop = topRoad.yPosition;
+    const bottomRoadBottom = bottomRoad.yPosition + bottomRoad.height;
+
+    // Available vertical space above/below the roads (clamped to >=20m if too small)
+    const spaceAbove = topRoadTop;
+    const spaceBelow = yardWidth - bottomRoadBottom;
+    const topHeight = spaceAbove >= 5 ? spaceAbove : 20;
+    const bottomHeight = spaceBelow >= 5 ? spaceBelow : 20;
+
+    // Start X at road position
+    const roadX = topRoad.xPosition;
+
+    const allElements: YardElement[] = [];
+
+    // Top row — units tiling horizontally above the topmost road
+    for (let i = 0; i < count; i++) {
+      allElements.push({
+        id: BigInt(Date.now()) * 10000n + BigInt(i + 1),
+        name: "Batching-Plant",
+        elementType: "custom",
+        width: unitWidth,
+        height: topHeight,
+        xPosition: roadX + i * unitWidth,
+        yPosition: topRoadTop - topHeight,
+        rotationAngle: 0,
+        color: "#22c55e",
+        status: "planned",
+        height3d: 12,
+        shape: "rectangle",
+        imageUrl: PLANT_IMAGE,
+      });
+    }
+
+    // Bottom row — units tiling horizontally below the bottommost road
+    for (let i = 0; i < count; i++) {
+      allElements.push({
+        id: BigInt(Date.now()) * 10000n + BigInt(count + i + 1),
+        name: "Batching-Plant",
+        elementType: "custom",
+        width: unitWidth,
+        height: bottomHeight,
+        xPosition: roadX + i * unitWidth,
+        yPosition: bottomRoadBottom,
+        rotationAngle: 0,
+        color: "#22c55e",
+        status: "planned",
+        height3d: 12,
+        shape: "rectangle",
+        imageUrl: PLANT_IMAGE,
+      });
+    }
+
+    onAddRawElements(allElements);
     setBatchingDialogOpen(false);
     setBatchingGirderCount("1");
   };

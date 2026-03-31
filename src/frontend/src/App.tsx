@@ -386,7 +386,13 @@ export default function App() {
     (id: bigint, changes: Partial<YardElement>) => {
       pushHistory();
       // Sync shared visual properties (color, height3d, shape) to all elements with the same name
-      const syncKeys: (keyof YardElement)[] = ["color", "height3d", "shape"];
+      const syncKeys: (keyof YardElement)[] = [
+        "color",
+        "height3d",
+        "shape",
+        "width",
+        "height",
+      ];
       const hasSyncChange = syncKeys.some((k) => k in changes);
       setElements((prev) => {
         const target = prev.find((e) => e.id === id);
