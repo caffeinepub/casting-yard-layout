@@ -232,53 +232,119 @@ export function LeftSidebar({
       },
     ];
 
-    // Row-pack the sub-areas left-to-right within availableWidth.
-    // direction "up"   → first row sits immediately above originY, rows grow upward.
-    // direction "down" → first row sits immediately below originY, rows grow downward.
+    // Column-based cluster layout matching user's image:
+    // Col 1: QA-Lab | Col 2: RMC-Store stacked on RMC-Garage |
+    // Col 3: Aggregates-10m stacked on Aggregates-20m | Col 4: Crushed-Sand |
+    // Col 5: Sedimentation-Tank-1 + -2 + -3 side by side
     const buildCluster = (
       originX: number,
       originY: number,
-      availableWidth: number,
+      _availableWidth: number,
       direction: "up" | "down",
       idCounter: { v: number },
     ): YardElement[] => {
       const elements: YardElement[] = [];
 
-      // Greedy row packing
-      const rows: Array<Array<(typeof subAreas)[number]>> = [];
-      let currentRow: Array<(typeof subAreas)[number]> = [];
-      let currentRowWidth = 0;
-      for (const area of subAreas) {
-        if (
-          currentRow.length > 0 &&
-          currentRowWidth + area.width > availableWidth
-        ) {
-          rows.push(currentRow);
-          currentRow = [area];
-          currentRowWidth = area.width;
-        } else {
-          currentRow.push(area);
-          currentRowWidth += area.width;
-        }
-      }
-      if (currentRow.length > 0) rows.push(currentRow);
+      // Define columns: each column is an array of sub-areas stacked vertically,
+      // and items within the last entry can be placed side-by-side if marked inline.
+      type AreaRef = {
+        name: string;
+        width: number;
+        height: number;
+        color: string;
+      };
+      const columns: AreaRef[][] = [
+        // Col 1: QA-Lab alone
+        [{ name: "QA-Lab", width: 20, height: 20, color: "#3b82f6" }],
+        // Col 2: RMC-Store on top, RMC-Garage below
+        [
+          {
+            name: "RMC-Store",
+            width: count * 1,
+            height: count * 0.5,
+            color: "#22c55e",
+          },
+          {
+            name: "RMC-Garage",
+            width: count * 1,
+            height: count * 0.5,
+            color: "#f59e0b",
+          },
+        ],
+        // Col 3: Aggregates-10m on top, Aggregates-20m below
+        [
+          {
+            name: "Aggregates-10m",
+            width: count * 1,
+            height: count * 1,
+            color: "#f97316",
+          },
+          {
+            name: "Aggregates-20m",
+            width: count * 1,
+            height: count * 1,
+            color: "#ef4444",
+          },
+        ],
+        // Col 4: Crushed-Sand alone
+        [
+          {
+            name: "Crushed-Sand",
+            width: count * 1,
+            height: count * 3,
+            color: "#eab308",
+          },
+        ],
+        // Col 5: 3 Sedimentation Tanks side by side — treat as 3 sub-columns of equal width
+        [
+          {
+            name: "Sedimentation-Tank-1",
+            width: 20 / 3,
+            height: 20,
+            color: "#14b8a6",
+          },
+        ],
+        [
+          {
+            name: "Sedimentation-Tank-2",
+            width: 20 / 3,
+            height: 20,
+            color: "#14b8a6",
+          },
+        ],
+        [
+          {
+            name: "Sedimentation-Tank-3",
+            width: 20 / 3,
+            height: 20,
+            color: "#14b8a6",
+          },
+        ],
+      ];
 
-      // Assign Y positions
-      let curY = originY;
-      const rowList = direction === "up" ? rows : rows;
-      for (const row of rowList) {
-        const rowHeight = Math.max(...row.map((a) => a.height));
-        let rowTop: number;
+      // Total cluster height = max column height
+      const colHeights = columns.map((col) =>
+        col.reduce((s, a) => s + a.height, 0),
+      );
+      const clusterHeight = Math.max(...colHeights);
+
+      let curX = originX;
+      for (const col of columns) {
+        const colWidth = Math.max(...col.map((a) => a.width));
+        const colHeight = col.reduce((s, a) => s + a.height, 0);
+
+        // Anchor point: bottom of cluster when direction=="up", top when "down"
+        let colTopY: number;
         if (direction === "up") {
-          curY -= rowHeight;
-          rowTop = curY;
+          // cluster bottom is at originY; align col bottom to cluster bottom
+          colTopY = originY - clusterHeight + (clusterHeight - colHeight);
         } else {
-          rowTop = curY;
-          curY += rowHeight;
+          // cluster top is at originY; align col top to cluster top
+          colTopY = originY;
         }
 
-        let curX = originX;
-        for (const area of row) {
+        let curY = colTopY;
+        for (const area of col) {
           elements.push({
             id: BigInt(Date.now()) * 10000n + BigInt(++idCounter.v),
             name: area.name,
@@ -286,16 +352,16 @@ export function LeftSidebar({
             width: area.width,
             height: area.height,
             xPosition: curX,
-            // Vertically centre shorter blocks within the row
-            yPosition: rowTop + (rowHeight - area.height) / 2,
+            yPosition: curY,
             rotationAngle: 0,
             color: area.color,
             status: "planned",
             height3d: 8,
             shape: "rectangle",
           });
-          curX += area.width;
+          curY += area.height;
         }
+        curX += colWidth;
       }
       return elements;
     };
