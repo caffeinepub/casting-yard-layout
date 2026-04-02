@@ -214,7 +214,7 @@ export function LeftSidebar({
       };
 
       // Silo dimensions: 3 cylindrical silos, each a circle
-      const siloDiameter = Math.max(4, count * 1.5);
+      const siloDiameter = Math.min(3.5, Math.max(2, count * 0.5));
       const connectorW = Math.max(2, count * 0.8);
       const connectorH = Math.max(1, count * 0.3);
       const rmcStoreW = Math.max(count * 1, 6);
@@ -389,7 +389,7 @@ export function LeftSidebar({
 
     if (roads.length === 0) {
       // Fallback: place silos + connectors + RMC in a row at (0,0)
-      const siloDiameter = Math.max(4, count * 1.5);
+      const siloDiameter = Math.min(3.5, Math.max(2, count * 0.5));
       const fallbackAreas = [
         {
           name: "QA-Lab",
