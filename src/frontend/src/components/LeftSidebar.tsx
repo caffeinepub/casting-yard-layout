@@ -293,9 +293,12 @@ export function LeftSidebar({
         ],
       ];
 
-      // Total cluster height = max column height
-      const colHeights = columns.map((col) =>
-        col.reduce((s, a) => s + a.height, 0),
+      // Total cluster height = max column height (including 0.5m gaps between items)
+      const CLUSTER_GAP = 0.5;
+      const colHeights = columns.map(
+        (col) =>
+          col.reduce((s, a) => s + a.height, 0) +
+          Math.max(0, col.length - 1) * CLUSTER_GAP,
       );
       const clusterHeight = Math.max(...colHeights);
 
@@ -310,9 +313,12 @@ export function LeftSidebar({
       const placedInfo: PlacedInfo[] = [];
 
       let curX = originX;
-      for (const col of columns) {
+      for (let colIdx = 0; colIdx < columns.length; colIdx++) {
+        const col = columns[colIdx];
         const colWidth = Math.max(...col.map((a) => a.width));
-        const colHeight = col.reduce((s, a) => s + a.height, 0);
+        const colHeight =
+          col.reduce((s, a) => s + a.height, 0) +
+          Math.max(0, col.length - 1) * CLUSTER_GAP;
 
         // Anchor point: bottom of cluster when direction=="up", top when "down"
         let colTopY: number;
@@ -345,9 +351,11 @@ export function LeftSidebar({
             w: area.width,
             h: area.height,
           });
-          curY += area.height;
+          curY += area.height + CLUSTER_GAP;
         }
-        curX += colWidth;
+        // After QA-Lab column (index 0), add 15m extra spacing
+        const extraGap = colIdx === 0 ? 15 : 0;
+        curX += colWidth + CLUSTER_GAP + extraGap;
       }
 
       // Fan layout: RMC-Garage is the CENTER/ANCHOR.
@@ -539,15 +547,20 @@ export function LeftSidebar({
         [wpt, generalShop],
       ];
 
-      const colHeights = columns.map((col) =>
-        col.reduce((s, a) => s + a.height, 0),
+      const STAFF_GAP = 0.5;
+      const colHeights = columns.map(
+        (col) =>
+          col.reduce((s, a) => s + a.height, 0) +
+          Math.max(0, col.length - 1) * STAFF_GAP,
       );
       const clusterHeight = Math.max(...colHeights);
 
       let curX = originX;
       for (const col of columns) {
         const colWidth = Math.max(...col.map((a) => a.width));
-        const colHeight = col.reduce((s, a) => s + a.height, 0);
+        const colHeight =
+          col.reduce((s, a) => s + a.height, 0) +
+          Math.max(0, col.length - 1) * STAFF_GAP;
 
         let colTopY: number;
         if (direction === "up") {
@@ -572,9 +585,9 @@ export function LeftSidebar({
             height3d: 5,
             shape: "rectangle",
           });
-          curY += area.height;
+          curY += area.height + STAFF_GAP;
         }
-        curX += colWidth + 1;
+        curX += colWidth + STAFF_GAP;
       }
       return elements;
     };
@@ -607,7 +620,7 @@ export function LeftSidebar({
           height3d: 5,
           shape: "rectangle",
         });
-        curX += area.width + 1;
+        curX += area.width + 0.5;
       }
       onAddRawElements(allElements);
       setStaffColonyDialogOpen(false);
