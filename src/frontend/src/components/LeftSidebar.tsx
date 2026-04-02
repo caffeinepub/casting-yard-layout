@@ -567,7 +567,7 @@ export function LeftSidebar({
         xPosition: startX,
         yPosition: curY,
         rotationAngle: 0,
-        color: "#e0b84a",
+        color: "#1a6b2a",
         status: "planned",
         height3d: 0.15,
         shape: "rectangle",

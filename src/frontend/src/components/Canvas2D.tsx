@@ -1056,19 +1056,69 @@ export function Canvas2D({
                     pxPerM={pxPerM}
                   />
                 )}
-                {el.name !== "Batching-Plant" && (
-                  <text
-                    x={cx}
-                    y={cy + 3.5}
-                    textAnchor="middle"
-                    fontSize={Math.min(10, Math.max(7, ew / 4))}
-                    fontWeight="700"
-                    fill="rgba(0,0,0,0.75)"
-                    style={{ pointerEvents: "none" }}
-                  >
-                    {el.name.split(" ").slice(-1)[0]}
-                  </text>
-                )}
+                {/* Label rendering: Bay, I-Girder, Reinforcement-Cage, others */}
+                {(() => {
+                  if (el.name === "Batching-Plant") return null;
+
+                  if (el.name === "Bay") {
+                    // Compute 1-based index by sorting bays by yPosition
+                    const bays = elements
+                      .filter((e) => e.name === "Bay")
+                      .sort((a, b) => a.yPosition - b.yPosition);
+                    const bayIndex = bays.findIndex((b) => b.id === el.id) + 1;
+                    const radius = Math.max(
+                      10,
+                      Math.min(Math.min(ew, eh) * 0.15, 18),
+                    );
+                    const fontSize = radius * 0.9;
+                    return (
+                      <g style={{ pointerEvents: "none" }}>
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={radius}
+                          fill="white"
+                          opacity={0.9}
+                        />
+                        <text
+                          x={cx}
+                          y={cy + fontSize * 0.35}
+                          textAnchor="middle"
+                          fontSize={fontSize}
+                          fontWeight="700"
+                          fontFamily="sans-serif"
+                          fill="#1a6b2a"
+                          style={{ pointerEvents: "none" }}
+                        >
+                          {`B${bayIndex}`}
+                        </text>
+                      </g>
+                    );
+                  }
+
+                  if (
+                    el.name === "I-Girder" ||
+                    el.name === "Reinforcement-Cage"
+                  ) {
+                    // Info panels rendered in a separate top-layer pass below
+                    return null;
+                  }
+
+                  // Default: show last word of element name
+                  return (
+                    <text
+                      x={cx}
+                      y={cy + 3.5}
+                      textAnchor="middle"
+                      fontSize={Math.min(10, Math.max(7, ew / 4))}
+                      fontWeight="700"
+                      fill="rgba(0,0,0,0.75)"
+                      style={{ pointerEvents: "none" }}
+                    >
+                      {el.name.split(" ").slice(-1)[0]}
+                    </text>
+                  );
+                })()}
                 {/* Snap highlight */}
                 {isSnapTarget && (
                   <rect
@@ -1143,6 +1193,123 @@ export function Canvas2D({
               </g>
             );
           })}
+
+          {/* I-Girder / R-Cage Info Panels - rendered on top layer */}
+          {(() => {
+            const rendered = new Set<string>();
+            const panels: React.ReactNode[] = [];
+
+            for (const el of elements) {
+              if (el.name !== "I-Girder" && el.name !== "Reinforcement-Cage")
+                continue;
+
+              const baysLocal = elements.filter((e) => e.name === "Bay");
+              let parentBay: (typeof elements)[0] | null = null;
+              for (const bay of baysLocal) {
+                if (
+                  el.xPosition >= bay.xPosition &&
+                  el.xPosition < bay.xPosition + bay.width &&
+                  el.yPosition >= bay.yPosition &&
+                  el.yPosition < bay.yPosition + bay.height
+                ) {
+                  parentBay = bay;
+                  break;
+                }
+              }
+              if (!parentBay) return;
+
+              const groupKey = `${el.name}-${parentBay.id}`;
+              if (rendered.has(groupKey)) return;
+
+              const siblings = elements
+                .filter(
+                  (e) =>
+                    e.name === el.name &&
+                    parentBay !== null &&
+                    e.xPosition >= parentBay.xPosition &&
+                    e.xPosition < parentBay.xPosition + parentBay.width &&
+                    e.yPosition >= parentBay.yPosition &&
+                    e.yPosition < parentBay.yPosition + parentBay.height,
+                )
+                .sort(
+                  (a, b) =>
+                    a.xPosition + a.yPosition - (b.xPosition + b.yPosition),
+                );
+
+              if (siblings.length === 0) return;
+
+              const first = siblings[0];
+              const fex = first.xPosition * pxPerM + MARGIN;
+              const fey = first.yPosition * pxPerM + MARGIN;
+              const few = first.width * pxPerM;
+
+              rendered.add(groupKey);
+
+              const totalCount = siblings.length;
+              let spacing = 0.5;
+              if (siblings.length >= 2) {
+                const gap =
+                  siblings[1].yPosition -
+                  siblings[0].yPosition -
+                  siblings[0].height;
+                spacing = Math.round(gap * 100) / 100;
+              }
+
+              const isGirder = el.name === "I-Girder";
+              const line1 = isGirder
+                ? `I-Girders: ${totalCount}`
+                : `R-Cages: ${totalCount}`;
+              const line2 = `Spacing: ${spacing}m`;
+              const line3 = `L: ${first.width}m  H: ${first.height3d}m  W: ${first.height}m`;
+
+              const panelW = Math.min(few * 0.95, 80);
+              const panelH = 30;
+              const fontSize = 6;
+
+              panels.push(
+                <g key={groupKey} style={{ pointerEvents: "none" }}>
+                  <rect
+                    x={fex + 2}
+                    y={fey + 2}
+                    width={panelW}
+                    height={panelH}
+                    fill="rgba(255,255,255,0.92)"
+                    stroke="#94a3b8"
+                    strokeWidth={0.5}
+                  />
+                  <text
+                    x={fex + 5}
+                    y={fey + 2 + fontSize + 1}
+                    fontSize={fontSize}
+                    fontFamily="sans-serif"
+                    fill="#1a1a2e"
+                  >
+                    {line1}
+                  </text>
+                  <text
+                    x={fex + 5}
+                    y={fey + 2 + (fontSize + 2) * 2}
+                    fontSize={fontSize}
+                    fontFamily="sans-serif"
+                    fill="#1a1a2e"
+                  >
+                    {line2}
+                  </text>
+                  <text
+                    x={fex + 5}
+                    y={fey + 2 + (fontSize + 2) * 3}
+                    fontSize={fontSize}
+                    fontFamily="sans-serif"
+                    fill="#1a1a2e"
+                  >
+                    {line3}
+                  </text>
+                </g>,
+              );
+            }
+
+            return panels;
+          })()}
 
           {/* Text Labels */}
           {textLabels.map((label) => {
