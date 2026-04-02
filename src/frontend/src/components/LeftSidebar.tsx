@@ -211,12 +211,13 @@ export function LeftSidebar({
         color: string;
         shape?: string;
         rotationAngle?: number;
+        height3d?: number;
       };
 
-      // Silo dimensions: 3 cylindrical silos, each a circle
+      // Silo dimensions: 3 cylindrical silos, each a circle, spaced 2m apart
       const siloDiameter = Math.min(3.5, Math.max(2, count * 0.5));
-      const connectorW = Math.max(2, count * 0.8);
-      const connectorH = Math.max(1, count * 0.3);
+      const siloSpacing = 2; // 2m gap between silos
+      const connectorH = 1.5;
       const rmcStoreW = Math.max(count * 1, 6);
       const rmcStoreH = Math.max(count * 0.5, 4);
       const rmcGarageW = Math.max(count * 1, 6);
@@ -225,21 +226,24 @@ export function LeftSidebar({
       const columns: AreaRef[][] = [
         // Col 1: QA-Lab alone
         [{ name: "QA-Lab", width: 20, height: 20, color: "#3b82f6" }],
-        // Col 2: 3 Silos stacked vertically (circles)
+        // Col 2: 3 Silos stacked vertically (circles) with 2m spacing — modeled as spacer trick
+        // We use height = siloDiameter + siloSpacing for silos 1 & 2, and siloDiameter for silo 3
         [
           {
             name: "Silo-1",
             width: siloDiameter,
-            height: siloDiameter,
+            height: siloDiameter + siloSpacing,
             color: "#94a3b8",
             shape: "circle",
+            height3d: 16,
           },
           {
             name: "Silo-2",
             width: siloDiameter,
-            height: siloDiameter,
+            height: siloDiameter + siloSpacing,
             color: "#94a3b8",
             shape: "circle",
+            height3d: 16,
           },
           {
             name: "Silo-3",
@@ -247,33 +251,11 @@ export function LeftSidebar({
             height: siloDiameter,
             color: "#94a3b8",
             shape: "circle",
+            height3d: 16,
           },
         ],
-        // Col 3: Connector blocks (angled rectangles linking silos to RMC-Store)
-        [
-          {
-            name: "Silo-Connector-1",
-            width: connectorW,
-            height: connectorH,
-            color: "#64748b",
-            rotationAngle: -30,
-          },
-          {
-            name: "Silo-Connector-2",
-            width: connectorW,
-            height: connectorH,
-            color: "#64748b",
-            rotationAngle: 0,
-          },
-          {
-            name: "Silo-Connector-3",
-            width: connectorW,
-            height: connectorH,
-            color: "#64748b",
-            rotationAngle: 30,
-          },
-        ],
-        // Col 4: RMC-Store on top, RMC-Garage below
+        // Col 3: RMC-Store on top, RMC-Garage below
+        // Connectors will be placed separately after column positions are known
         [
           {
             name: "RMC-Store",
@@ -288,7 +270,7 @@ export function LeftSidebar({
             color: "#f59e0b",
           },
         ],
-        // Col 5: Aggregates-10m on top, Aggregates-20m below
+        // Col 4: Aggregates-10m on top, Aggregates-20m below
         [
           {
             name: "Aggregates-10m",
@@ -303,7 +285,7 @@ export function LeftSidebar({
             color: "#ef4444",
           },
         ],
-        // Col 6: Crushed-Sand alone
+        // Col 5: Crushed-Sand alone
         [
           {
             name: "Crushed-Sand",
@@ -312,7 +294,7 @@ export function LeftSidebar({
             color: "#eab308",
           },
         ],
-        // Col 7-9: 3 Sedimentation Tanks side by side
+        // Col 6-8: 3 Sedimentation Tanks side by side
         [
           {
             name: "Sedimentation-Tank-1",
@@ -345,6 +327,16 @@ export function LeftSidebar({
       );
       const clusterHeight = Math.max(...colHeights);
 
+      // Track positions for post-processing (connectors from silos to RMC-Garage)
+      type PlacedInfo = {
+        name: string;
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      };
+      const placedInfo: PlacedInfo[] = [];
+
       let curX = originX;
       for (const col of columns) {
         const colWidth = Math.max(...col.map((a) => a.width));
@@ -371,13 +363,66 @@ export function LeftSidebar({
             rotationAngle: area.rotationAngle ?? 0,
             color: area.color,
             status: "planned",
-            height3d: 8,
+            height3d: area.height3d ?? 8,
             shape: (area.shape ?? "rectangle") as YardElement["shape"],
+          });
+          placedInfo.push({
+            name: area.name,
+            x: curX,
+            y: curY,
+            w: area.width,
+            h: area.height,
           });
           curY += area.height;
         }
         curX += colWidth;
       }
+
+      // Now add connectors from each silo to the RMC-Garage
+      // Find silo and RMC-Garage positions
+      const silo1Info = placedInfo.find((p) => p.name === "Silo-1");
+      const silo2Info = placedInfo.find((p) => p.name === "Silo-2");
+      const silo3Info = placedInfo.find((p) => p.name === "Silo-3");
+      const rmcGarageInfo = placedInfo.find((p) => p.name === "RMC-Garage");
+
+      if (silo1Info && silo2Info && silo3Info && rmcGarageInfo) {
+        // Right edge of silo column = silo x + siloDiameter
+        const siloRightX = silo1Info.x + siloDiameter;
+        // Left edge of RMC-Garage
+        const rmcGarageLeftX = rmcGarageInfo.x;
+        // Center Y of RMC-Garage
+        const rmcGarageCenterY = rmcGarageInfo.y + rmcGarageInfo.h / 2;
+
+        // Connector width = horizontal distance from silo right to RMC-Garage left
+        const connectorW = Math.max(rmcGarageLeftX - siloRightX, 2);
+
+        const siloInfos = [silo1Info, silo2Info, silo3Info];
+        for (let i = 0; i < siloInfos.length; i++) {
+          const sInfo = siloInfos[i];
+          // Center Y of this silo (the actual circle is at top of its slot; circle center = y + siloDiameter/2)
+          const siloCenterY = sInfo.y + siloDiameter / 2;
+          // Angle from silo center to RMC-Garage center
+          const dy = rmcGarageCenterY - siloCenterY;
+          const dx = connectorW;
+          const angle = Math.round(Math.atan2(dy, dx) * (180 / Math.PI));
+
+          elements.push({
+            id: BigInt(Date.now()) * 10000n + BigInt(++idCounter.v),
+            name: `Silo-Connector-${i + 1}`,
+            elementType: "custom",
+            width: connectorW,
+            height: connectorH,
+            xPosition: siloRightX,
+            yPosition: siloCenterY - connectorH / 2,
+            rotationAngle: angle,
+            color: "#64748b",
+            status: "planned",
+            height3d: 2,
+            shape: "rectangle" as YardElement["shape"],
+          });
+        }
+      }
+
       return elements;
     };
 
@@ -390,6 +435,7 @@ export function LeftSidebar({
     if (roads.length === 0) {
       // Fallback: place silos + connectors + RMC in a row at (0,0)
       const siloDiameter = Math.min(3.5, Math.max(2, count * 0.5));
+      const siloSpacingFb = 2; // 2m gap between silos
       const fallbackAreas = [
         {
           name: "QA-Lab",
@@ -400,17 +446,19 @@ export function LeftSidebar({
         },
         {
           name: "Silo-1",
-          width: siloDiameter,
+          width: siloDiameter + siloSpacingFb,
           height: siloDiameter,
           color: "#94a3b8",
           shape: "circle",
+          height3d: 16,
         },
         {
           name: "Silo-2",
-          width: siloDiameter,
+          width: siloDiameter + siloSpacingFb,
           height: siloDiameter,
           color: "#94a3b8",
           shape: "circle",
+          height3d: 16,
         },
         {
           name: "Silo-3",
@@ -418,13 +466,15 @@ export function LeftSidebar({
           height: siloDiameter,
           color: "#94a3b8",
           shape: "circle",
+          height3d: 16,
         },
         {
           name: "Silo-Connector-1",
           width: Math.max(2, count * 0.8),
-          height: Math.max(1, count * 0.3),
+          height: 1.5,
           color: "#64748b",
           shape: "rectangle",
+          height3d: 2,
         },
         {
           name: "RMC-Store",
@@ -496,7 +546,7 @@ export function LeftSidebar({
           rotationAngle: 0,
           color: area.color,
           status: "planned",
-          height3d: 8,
+          height3d: (area as any).height3d ?? 8,
           shape: area.shape as YardElement["shape"],
         });
         curX += area.width;
@@ -2053,7 +2103,7 @@ export function LeftSidebar({
                   ].map((area) => (
                     <div key={area.name} className="flex items-center gap-1">
                       <span
-                        className={`inline-block w-2 h-2 shrink-0 ${area.shape === "circle" ? "rounded-full" : "rounded-sm"}`}
+                        className={`inline-block w-2 h-2 shrink-0 $area.shape === "circle" ? "rounded-full" : "rounded-sm"`}
                         style={{ background: area.color }}
                       />
                       <span className="text-[9px] text-muted-foreground truncate flex-1">
