@@ -62,6 +62,15 @@ const EQUIPMENT_ITEMS: import("../types/yard").LibraryItem[] = [
     imageUrl:
       "/assets/uploads/shedsquzre-019d3535-7bc3-7280-b6a1-111f64005e90-1.png",
   },
+  {
+    name: "Staff-Colony",
+    elementType: "custom",
+    width: 20,
+    height: 40,
+    height3d: 5,
+    color: "#06b6d4",
+    defaultStatus: "planned",
+  },
 ];
 
 interface LeftSidebarProps {
@@ -110,6 +119,8 @@ export function LeftSidebar({
   // Batching-Plant girder config
   const [batchingDialogOpen, setBatchingDialogOpen] = useState(false);
   const [batchingGirderCount, setBatchingGirderCount] = useState("1");
+  const [staffColonyDialogOpen, setStaffColonyDialogOpen] = useState(false);
+  const [staffLaborCount, setStaffLaborCount] = useState("50");
 
   // I-Girder config
   const [iGirderDialogOpen, setIGirderDialogOpen] = useState(false);
@@ -179,63 +190,11 @@ export function LeftSidebar({
   const handlePlaceBatchingPlant = () => {
     const count = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
 
-    // The 9 individually-sized sub-area blocks that make up one batching plant cluster
-    const subAreas = [
-      { name: "QA-Lab", width: 20, height: 20, color: "#3b82f6" },
-      {
-        name: "RMC-Store",
-        width: count * 1,
-        height: count * 0.5,
-        color: "#22c55e",
-      },
-      {
-        name: "RMC-Garage",
-        width: count * 1,
-        height: count * 0.5,
-        color: "#f59e0b",
-      },
-      {
-        name: "Aggregates-10m",
-        width: count * 1,
-        height: count * 1,
-        color: "#f97316",
-      },
-      {
-        name: "Aggregates-20m",
-        width: count * 1,
-        height: count * 1,
-        color: "#ef4444",
-      },
-      {
-        name: "Crushed-Sand",
-        width: count * 1,
-        height: count * 3,
-        color: "#eab308",
-      },
-      {
-        name: "Sedimentation-Tank-1",
-        width: 20 / 3,
-        height: 20,
-        color: "#14b8a6",
-      },
-      {
-        name: "Sedimentation-Tank-2",
-        width: 20 / 3,
-        height: 20,
-        color: "#14b8a6",
-      },
-      {
-        name: "Sedimentation-Tank-3",
-        width: 20 / 3,
-        height: 20,
-        color: "#14b8a6",
-      },
-    ];
-
-    // Column-based cluster layout matching user's image:
-    // Col 1: QA-Lab | Col 2: RMC-Store stacked on RMC-Garage |
-    // Col 3: Aggregates-10m stacked on Aggregates-20m | Col 4: Crushed-Sand |
-    // Col 5: Sedimentation-Tank-1 + -2 + -3 side by side
+    // Column-based cluster layout:
+    // Col 1: QA-Lab | Col 2: Silos (circles) + connectors to RMC-Store |
+    // Col 3: RMC-Store stacked on RMC-Garage |
+    // Col 4: Aggregates-10m stacked on Aggregates-20m | Col 5: Crushed-Sand |
+    // Col 6-8: Sedimentation Tanks side by side
     const buildCluster = (
       originX: number,
       originY: number,
@@ -245,33 +204,91 @@ export function LeftSidebar({
     ): YardElement[] => {
       const elements: YardElement[] = [];
 
-      // Define columns: each column is an array of sub-areas stacked vertically,
-      // and items within the last entry can be placed side-by-side if marked inline.
       type AreaRef = {
         name: string;
         width: number;
         height: number;
         color: string;
+        shape?: string;
+        rotationAngle?: number;
       };
+
+      // Silo dimensions: 3 cylindrical silos, each a circle
+      const siloDiameter = Math.max(4, count * 1.5);
+      const connectorW = Math.max(2, count * 0.8);
+      const connectorH = Math.max(1, count * 0.3);
+      const rmcStoreW = Math.max(count * 1, 6);
+      const rmcStoreH = Math.max(count * 0.5, 4);
+      const rmcGarageW = Math.max(count * 1, 6);
+      const rmcGarageH = Math.max(count * 0.5, 4);
+
       const columns: AreaRef[][] = [
         // Col 1: QA-Lab alone
         [{ name: "QA-Lab", width: 20, height: 20, color: "#3b82f6" }],
-        // Col 2: RMC-Store on top, RMC-Garage below
+        // Col 2: 3 Silos stacked vertically (circles)
+        [
+          {
+            name: "Silo-1",
+            width: siloDiameter,
+            height: siloDiameter,
+            color: "#94a3b8",
+            shape: "circle",
+          },
+          {
+            name: "Silo-2",
+            width: siloDiameter,
+            height: siloDiameter,
+            color: "#94a3b8",
+            shape: "circle",
+          },
+          {
+            name: "Silo-3",
+            width: siloDiameter,
+            height: siloDiameter,
+            color: "#94a3b8",
+            shape: "circle",
+          },
+        ],
+        // Col 3: Connector blocks (angled rectangles linking silos to RMC-Store)
+        [
+          {
+            name: "Silo-Connector-1",
+            width: connectorW,
+            height: connectorH,
+            color: "#64748b",
+            rotationAngle: -30,
+          },
+          {
+            name: "Silo-Connector-2",
+            width: connectorW,
+            height: connectorH,
+            color: "#64748b",
+            rotationAngle: 0,
+          },
+          {
+            name: "Silo-Connector-3",
+            width: connectorW,
+            height: connectorH,
+            color: "#64748b",
+            rotationAngle: 30,
+          },
+        ],
+        // Col 4: RMC-Store on top, RMC-Garage below
         [
           {
             name: "RMC-Store",
-            width: count * 1,
-            height: count * 0.5,
+            width: rmcStoreW,
+            height: rmcStoreH,
             color: "#22c55e",
           },
           {
             name: "RMC-Garage",
-            width: count * 1,
-            height: count * 0.5,
+            width: rmcGarageW,
+            height: rmcGarageH,
             color: "#f59e0b",
           },
         ],
-        // Col 3: Aggregates-10m on top, Aggregates-20m below
+        // Col 5: Aggregates-10m on top, Aggregates-20m below
         [
           {
             name: "Aggregates-10m",
@@ -286,7 +303,7 @@ export function LeftSidebar({
             color: "#ef4444",
           },
         ],
-        // Col 4: Crushed-Sand alone
+        // Col 6: Crushed-Sand alone
         [
           {
             name: "Crushed-Sand",
@@ -295,7 +312,7 @@ export function LeftSidebar({
             color: "#eab308",
           },
         ],
-        // Col 5: 3 Sedimentation Tanks side by side — treat as 3 sub-columns of equal width
+        // Col 7-9: 3 Sedimentation Tanks side by side
         [
           {
             name: "Sedimentation-Tank-1",
@@ -336,10 +353,8 @@ export function LeftSidebar({
         // Anchor point: bottom of cluster when direction=="up", top when "down"
         let colTopY: number;
         if (direction === "up") {
-          // cluster bottom is at originY; align col bottom to cluster bottom
           colTopY = originY - clusterHeight + (clusterHeight - colHeight);
         } else {
-          // cluster top is at originY; align col top to cluster top
           colTopY = originY;
         }
 
@@ -353,11 +368,11 @@ export function LeftSidebar({
             height: area.height,
             xPosition: curX,
             yPosition: curY,
-            rotationAngle: 0,
+            rotationAngle: area.rotationAngle ?? 0,
             color: area.color,
             status: "planned",
             height3d: 8,
-            shape: "rectangle",
+            shape: (area.shape ?? "rectangle") as YardElement["shape"],
           });
           curY += area.height;
         }
@@ -373,9 +388,103 @@ export function LeftSidebar({
     const roads = placedElements.filter((el) => el.name === "Road");
 
     if (roads.length === 0) {
-      // Fallback: place all 9 blocks in a single row starting at (0, 0)
+      // Fallback: place silos + connectors + RMC in a row at (0,0)
+      const siloDiameter = Math.max(4, count * 1.5);
+      const fallbackAreas = [
+        {
+          name: "QA-Lab",
+          width: 20,
+          height: 20,
+          color: "#3b82f6",
+          shape: "rectangle",
+        },
+        {
+          name: "Silo-1",
+          width: siloDiameter,
+          height: siloDiameter,
+          color: "#94a3b8",
+          shape: "circle",
+        },
+        {
+          name: "Silo-2",
+          width: siloDiameter,
+          height: siloDiameter,
+          color: "#94a3b8",
+          shape: "circle",
+        },
+        {
+          name: "Silo-3",
+          width: siloDiameter,
+          height: siloDiameter,
+          color: "#94a3b8",
+          shape: "circle",
+        },
+        {
+          name: "Silo-Connector-1",
+          width: Math.max(2, count * 0.8),
+          height: Math.max(1, count * 0.3),
+          color: "#64748b",
+          shape: "rectangle",
+        },
+        {
+          name: "RMC-Store",
+          width: count * 1,
+          height: count * 0.5,
+          color: "#22c55e",
+          shape: "rectangle",
+        },
+        {
+          name: "RMC-Garage",
+          width: count * 1,
+          height: count * 0.5,
+          color: "#f59e0b",
+          shape: "rectangle",
+        },
+        {
+          name: "Aggregates-10m",
+          width: count * 1,
+          height: count * 1,
+          color: "#f97316",
+          shape: "rectangle",
+        },
+        {
+          name: "Aggregates-20m",
+          width: count * 1,
+          height: count * 1,
+          color: "#ef4444",
+          shape: "rectangle",
+        },
+        {
+          name: "Crushed-Sand",
+          width: count * 1,
+          height: count * 3,
+          color: "#eab308",
+          shape: "rectangle",
+        },
+        {
+          name: "Sedimentation-Tank-1",
+          width: 20 / 3,
+          height: 20,
+          color: "#14b8a6",
+          shape: "rectangle",
+        },
+        {
+          name: "Sedimentation-Tank-2",
+          width: 20 / 3,
+          height: 20,
+          color: "#14b8a6",
+          shape: "rectangle",
+        },
+        {
+          name: "Sedimentation-Tank-3",
+          width: 20 / 3,
+          height: 20,
+          color: "#14b8a6",
+          shape: "rectangle",
+        },
+      ];
       let curX = 0;
-      for (const area of subAreas) {
+      for (const area of fallbackAreas) {
         allElements.push({
           id: BigInt(Date.now()) * 10000n + BigInt(++idCounter.v),
           name: area.name,
@@ -388,7 +497,7 @@ export function LeftSidebar({
           color: area.color,
           status: "planned",
           height3d: 8,
-          shape: "rectangle",
+          shape: area.shape as YardElement["shape"],
         });
         curX += area.width;
       }
@@ -431,6 +540,172 @@ export function LeftSidebar({
     onAddRawElements(allElements);
     setBatchingDialogOpen(false);
     setBatchingGirderCount("1");
+  };
+
+  const handlePlaceStaffColony = () => {
+    const laborCount = Math.max(1, Number.parseInt(staffLaborCount) || 50);
+    const numColonyBlocks = Math.min(
+      6,
+      Math.max(1, Math.ceil(laborCount / 50)),
+    );
+
+    const colonyBlockW = Math.max(8, laborCount * 0.3);
+    const colonyBlockH = Math.max(15, laborCount * 0.6);
+
+    // Sub-area definitions
+    const colonyBlocks = Array.from({ length: numColonyBlocks }, (_, i) => ({
+      name: `Labour-Colony-${i + 1}`,
+      width: colonyBlockW,
+      height: colonyBlockH,
+      color: "#06b6d4",
+    }));
+
+    const toiletBlock = {
+      name: "Toilet-Block",
+      width: 10,
+      height: 8,
+      color: "#a855f7",
+    };
+    const openBath = {
+      name: "Open-Bath",
+      width: 8,
+      height: 8,
+      color: "#3b82f6",
+    };
+    const wpt = { name: "WPT", width: 6, height: 6, color: "#22c55e" };
+    const generalShop = {
+      name: "General-Shop",
+      width: 12,
+      height: 10,
+      color: "#f59e0b",
+    };
+
+    // Build cluster: labour colony blocks as cols, then toilet+bath col, then wpt+shop col
+    const buildCluster = (
+      originX: number,
+      originY: number,
+      _availableWidth: number,
+      direction: "up" | "down",
+      idCounter: { v: number },
+    ): YardElement[] => {
+      const elements: YardElement[] = [];
+      type ColArea = {
+        name: string;
+        width: number;
+        height: number;
+        color: string;
+      };
+
+      const columns: ColArea[][] = [
+        ...colonyBlocks.map((b) => [b]),
+        [toiletBlock, openBath],
+        [wpt, generalShop],
+      ];
+
+      const colHeights = columns.map((col) =>
+        col.reduce((s, a) => s + a.height, 0),
+      );
+      const clusterHeight = Math.max(...colHeights);
+
+      let curX = originX;
+      for (const col of columns) {
+        const colWidth = Math.max(...col.map((a) => a.width));
+        const colHeight = col.reduce((s, a) => s + a.height, 0);
+
+        let colTopY: number;
+        if (direction === "up") {
+          colTopY = originY - clusterHeight + (clusterHeight - colHeight);
+        } else {
+          colTopY = originY;
+        }
+
+        let curY = colTopY;
+        for (const area of col) {
+          elements.push({
+            id: BigInt(Date.now()) * 10000n + BigInt(++idCounter.v),
+            name: area.name,
+            elementType: "custom",
+            width: area.width,
+            height: area.height,
+            xPosition: curX,
+            yPosition: curY,
+            rotationAngle: 0,
+            color: area.color,
+            status: "planned",
+            height3d: 5,
+            shape: "rectangle",
+          });
+          curY += area.height;
+        }
+        curX += colWidth + 1;
+      }
+      return elements;
+    };
+
+    const idCounter = { v: 0 };
+    const allElements: YardElement[] = [];
+    const roads = placedElements.filter((el) => el.name === "Road");
+
+    if (roads.length === 0) {
+      let curX = 0;
+      const allAreas = [
+        ...colonyBlocks,
+        toiletBlock,
+        openBath,
+        wpt,
+        generalShop,
+      ];
+      for (const area of allAreas) {
+        allElements.push({
+          id: BigInt(Date.now()) * 10000n + BigInt(++idCounter.v),
+          name: area.name,
+          elementType: "custom",
+          width: area.width,
+          height: area.height,
+          xPosition: curX,
+          yPosition: 0,
+          rotationAngle: 0,
+          color: area.color,
+          status: "planned",
+          height3d: 5,
+          shape: "rectangle",
+        });
+        curX += area.width + 1;
+      }
+      onAddRawElements(allElements);
+      setStaffColonyDialogOpen(false);
+      setStaffLaborCount("50");
+      return;
+    }
+
+    const topRoad = roads.reduce((prev, curr) =>
+      curr.yPosition < prev.yPosition ? curr : prev,
+    );
+    const bottomRoad = roads.reduce((prev, curr) =>
+      curr.yPosition + curr.height > prev.yPosition + prev.height ? curr : prev,
+    );
+
+    const topRoadTop = topRoad.yPosition;
+    const bottomRoadBottom = bottomRoad.yPosition + bottomRoad.height;
+    const roadX = topRoad.xPosition;
+    const availableWidth = topRoad.width;
+
+    allElements.push(
+      ...buildCluster(roadX, topRoadTop, availableWidth, "up", idCounter),
+    );
+    allElements.push(
+      ...buildCluster(
+        roadX,
+        bottomRoadBottom,
+        availableWidth,
+        "down",
+        idCounter,
+      ),
+    );
+
+    onAddRawElements(allElements);
+    setStaffColonyDialogOpen(false);
+    setStaffLaborCount("50");
   };
 
   // Returns the auto-start X for new elements on a bay.
@@ -897,6 +1172,10 @@ export function LeftSidebar({
   );
 
   const girderCount = Math.max(1, Number.parseInt(batchingGirderCount) || 1);
+  const staffLaborCountNum = Math.max(
+    1,
+    Number.parseInt(staffLaborCount) || 50,
+  );
 
   return (
     <aside
@@ -1562,7 +1841,8 @@ export function LeftSidebar({
             <div className="group flex items-center gap-1 mx-2 mb-1 rounded hover:bg-muted/60 transition-colors">
               {item.name === "Batching-Plant" ||
               item.name === "Reinforcement-Cage" ||
-              item.name === "Factory-Shed" ? (
+              item.name === "Factory-Shed" ||
+              item.name === "Staff-Colony" ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -1570,6 +1850,8 @@ export function LeftSidebar({
                       setRcDialogOpen((prev) => !prev);
                     } else if (item.name === "Factory-Shed") {
                       handlePlaceFactoryShed();
+                    } else if (item.name === "Staff-Colony") {
+                      setStaffColonyDialogOpen((prev) => !prev);
                     } else {
                       setBatchingDialogOpen((prev) => !prev);
                       setBatchingGirderCount("1");
@@ -1579,11 +1861,20 @@ export function LeftSidebar({
                   title="Click to configure and place"
                   data-ocid={`sidebar.equipment.item.${idx + 1}`}
                 >
-                  <img
-                    src={item.imageUrl}
-                    alt={item.name}
-                    className="w-6 h-6 object-cover rounded flex-shrink-0 border border-border"
-                  />
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      className="w-6 h-6 object-cover rounded flex-shrink-0 border border-border"
+                    />
+                  ) : (
+                    <span
+                      className="w-6 h-6 rounded flex-shrink-0 border border-border flex items-center justify-center text-[8px] font-bold text-white"
+                      style={{ background: item.color || "#06b6d4" }}
+                    >
+                      {item.name.slice(0, 2)}
+                    </span>
+                  )}
                   <div className="min-w-0 text-left flex-1">
                     <div className="text-xs font-medium break-words leading-tight">
                       {item.name}
@@ -1591,7 +1882,9 @@ export function LeftSidebar({
                     <div className="text-[10px] text-muted-foreground">
                       {item.name === "Factory-Shed"
                         ? "Auto-sized from girders"
-                        : `L:${item.height}m × W:${item.width}m`}
+                        : item.name === "Staff-Colony"
+                          ? "Cluster: colony + amenities"
+                          : `L:${item.height}m × W:${item.width}m`}
                     </div>
                   </div>
                   <Settings className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -1666,59 +1959,101 @@ export function LeftSidebar({
                     {girderCount !== 1 ? "s" : ""}:
                   </div>
                   {[
-                    { name: "QA-Lab", w: 20, h: 20, color: "#3b82f6" },
+                    {
+                      name: "QA-Lab",
+                      w: 20,
+                      h: 20,
+                      color: "#3b82f6",
+                      shape: "rect",
+                    },
+                    {
+                      name: "Silo-1",
+                      w: Number(Math.max(4, girderCount * 1.5).toFixed(1)),
+                      h: Number(Math.max(4, girderCount * 1.5).toFixed(1)),
+                      color: "#94a3b8",
+                      shape: "circle",
+                    },
+                    {
+                      name: "Silo-2",
+                      w: Number(Math.max(4, girderCount * 1.5).toFixed(1)),
+                      h: Number(Math.max(4, girderCount * 1.5).toFixed(1)),
+                      color: "#94a3b8",
+                      shape: "circle",
+                    },
+                    {
+                      name: "Silo-3",
+                      w: Number(Math.max(4, girderCount * 1.5).toFixed(1)),
+                      h: Number(Math.max(4, girderCount * 1.5).toFixed(1)),
+                      color: "#94a3b8",
+                      shape: "circle",
+                    },
+                    {
+                      name: "Silo-Connector (×3)",
+                      w: Number(Math.max(2, girderCount * 0.8).toFixed(1)),
+                      h: Number(Math.max(1, girderCount * 0.3).toFixed(1)),
+                      color: "#64748b",
+                      shape: "angled",
+                    },
                     {
                       name: "RMC-Store",
-                      w: girderCount * 1,
-                      h: girderCount * 0.5,
+                      w: Math.max(girderCount * 1, 6),
+                      h: Math.max(girderCount * 0.5, 4),
                       color: "#22c55e",
+                      shape: "rect",
                     },
                     {
                       name: "RMC-Garage",
-                      w: girderCount * 1,
-                      h: girderCount * 0.5,
+                      w: Math.max(girderCount * 1, 6),
+                      h: Math.max(girderCount * 0.5, 4),
                       color: "#f59e0b",
+                      shape: "rect",
                     },
                     {
                       name: "Aggregates-10m",
                       w: girderCount * 1,
                       h: girderCount * 1,
                       color: "#f97316",
+                      shape: "rect",
                     },
                     {
                       name: "Aggregates-20m",
                       w: girderCount * 1,
                       h: girderCount * 1,
                       color: "#ef4444",
+                      shape: "rect",
                     },
                     {
                       name: "Crushed-Sand",
                       w: girderCount * 1,
                       h: girderCount * 3,
                       color: "#eab308",
+                      shape: "rect",
                     },
                     {
                       name: "Sedimentation-Tank-1",
                       w: Number((20 / 3).toFixed(2)),
                       h: 20,
                       color: "#14b8a6",
+                      shape: "rect",
                     },
                     {
                       name: "Sedimentation-Tank-2",
                       w: Number((20 / 3).toFixed(2)),
                       h: 20,
                       color: "#14b8a6",
+                      shape: "rect",
                     },
                     {
                       name: "Sedimentation-Tank-3",
                       w: Number((20 / 3).toFixed(2)),
                       h: 20,
                       color: "#14b8a6",
+                      shape: "rect",
                     },
                   ].map((area) => (
                     <div key={area.name} className="flex items-center gap-1">
                       <span
-                        className="inline-block w-2 h-2 rounded-sm shrink-0"
+                        className={`inline-block w-2 h-2 shrink-0 ${area.shape === "circle" ? "rounded-full" : "rounded-sm"}`}
                         style={{ background: area.color }}
                       />
                       <span className="text-[9px] text-muted-foreground truncate flex-1">
@@ -1746,6 +2081,104 @@ export function LeftSidebar({
                     className="flex-1 h-7 text-[11px]"
                     onClick={() => setBatchingDialogOpen(false)}
                     data-ocid="batching.cancel_button"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Staff-Colony inline config panel */}
+            {item.name === "Staff-Colony" && staffColonyDialogOpen && (
+              <div className="mx-2 mb-2 rounded border border-border bg-muted/40 p-2 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-foreground">
+                    Staff-Colony Config
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setStaffColonyDialogOpen(false)}
+                    className="text-muted-foreground hover:text-foreground"
+                    data-ocid="staffcolony.close_button"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-0.5">
+                  <label
+                    htmlFor="staffcolony-labor-count"
+                    className="text-[10px] text-muted-foreground font-medium"
+                  >
+                    No. of Labor
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={staffLaborCount}
+                    onChange={(e) => setStaffLaborCount(e.target.value)}
+                    className="h-7 text-xs"
+                    id="staffcolony-labor-count"
+                    data-ocid="staffcolony.input"
+                  />
+                </div>
+
+                {/* Preview sub-areas */}
+                <div className="rounded bg-background border border-border p-1.5 flex flex-col gap-0.5">
+                  <div className="text-[9px] text-muted-foreground font-semibold mb-0.5">
+                    Sub-areas for {staffLaborCountNum} labor:
+                  </div>
+                  {[
+                    ...Array.from(
+                      {
+                        length: Math.min(
+                          6,
+                          Math.max(1, Math.ceil(staffLaborCountNum / 50)),
+                        ),
+                      },
+                      (_, i) => ({
+                        name: `Labour-Colony-${i + 1}`,
+                        w: Math.max(8, staffLaborCountNum * 0.3),
+                        h: Math.max(15, staffLaborCountNum * 0.6),
+                        color: "#06b6d4",
+                      }),
+                    ),
+                    { name: "Toilet-Block", w: 10, h: 8, color: "#a855f7" },
+                    { name: "Open-Bath", w: 8, h: 8, color: "#3b82f6" },
+                    { name: "WPT", w: 6, h: 6, color: "#22c55e" },
+                    { name: "General-Shop", w: 12, h: 10, color: "#f59e0b" },
+                  ].map((area) => (
+                    <div key={area.name} className="flex items-center gap-1">
+                      <span
+                        className="inline-block w-2 h-2 rounded-sm shrink-0"
+                        style={{ background: area.color }}
+                      />
+                      <span className="text-[9px] text-muted-foreground truncate flex-1">
+                        {area.name}
+                      </span>
+                      <span className="text-[9px] font-medium text-foreground shrink-0">
+                        {area.w}×{area.h}m
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-1.5">
+                  <Button
+                    size="sm"
+                    className="flex-1 h-7 text-[11px]"
+                    onClick={handlePlaceStaffColony}
+                    data-ocid="staffcolony.submit_button"
+                  >
+                    Place
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-7 text-[11px]"
+                    onClick={() => setStaffColonyDialogOpen(false)}
+                    data-ocid="staffcolony.cancel_button"
                   >
                     Cancel
                   </Button>

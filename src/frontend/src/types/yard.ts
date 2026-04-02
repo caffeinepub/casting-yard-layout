@@ -60,7 +60,7 @@ export interface LibraryItem {
 
 export interface SpacingSettings {
   // Bay
-  bayVerticalSpacing: number; // default 30
+  bayVerticalSpacing: number; // default 12
   // I-Girder
   iGirderVerticalGap: number; // default 0.5 (gap between girder edges)
   iGirderLeftMargin: number; // default 10 (from left edge of bay)
@@ -79,7 +79,7 @@ export interface SpacingSettings {
 }
 
 export const DEFAULT_SPACING_SETTINGS: SpacingSettings = {
-  bayVerticalSpacing: 30,
+  bayVerticalSpacing: 12,
   iGirderVerticalGap: 0.5,
   iGirderLeftMargin: 10,
   iGirderBayMargin: 2,

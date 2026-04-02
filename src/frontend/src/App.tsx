@@ -56,8 +56,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [scale, setScale] = useState<ScaleOption>("1:200");
   const [projectName, setProjectName] = useState("New Casting Yard");
-  const [yardLength, setYardLength] = useState(540);
-  const [yardWidth, setYardWidth] = useState(540);
+  const [yardLength, setYardLength] = useState(500);
+  const [yardWidth, setYardWidth] = useState(300);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
   const [spacingSettings, setSpacingSettings] = useState<SpacingSettings>(
     DEFAULT_SPACING_SETTINGS,
@@ -630,8 +630,8 @@ export default function App() {
           saveToLocalStorage({
             id: projId,
             projectName: data.projectName ?? file.name.replace(/\.cyld$/, ""),
-            yardLength: data.yardLength ?? data.yardSize ?? 540,
-            yardWidth: data.yardWidth ?? data.yardSize ?? 540,
+            yardLength: data.yardLength ?? data.yardSize ?? 500,
+            yardWidth: data.yardWidth ?? data.yardSize ?? 300,
             elementCount: Array.isArray(data.elements)
               ? data.elements.length
               : 0,
@@ -655,8 +655,8 @@ export default function App() {
     setLibraryItems([]);
     setSelectedIds(new Set());
     setProjectName("New Casting Yard");
-    setYardLength(540);
-    setYardWidth(540);
+    setYardLength(500);
+    setYardWidth(300);
     setActiveProjectId(null);
     lastPlacedRef.current = null;
     undoStack.current = [];

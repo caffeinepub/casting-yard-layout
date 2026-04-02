@@ -1216,10 +1216,10 @@ export function Canvas2D({
                   break;
                 }
               }
-              if (!parentBay) return;
+              if (!parentBay) continue;
 
               const groupKey = `${el.name}-${parentBay.id}`;
-              if (rendered.has(groupKey)) return;
+              if (rendered.has(groupKey)) continue;
 
               const siblings = elements
                 .filter(
@@ -1236,7 +1236,7 @@ export function Canvas2D({
                     a.xPosition + a.yPosition - (b.xPosition + b.yPosition),
                 );
 
-              if (siblings.length === 0) return;
+              if (siblings.length === 0) continue;
 
               const first = siblings[0];
               const fex = first.xPosition * pxPerM + MARGIN;
@@ -1265,12 +1265,13 @@ export function Canvas2D({
               const panelW = Math.min(few * 0.95, 80);
               const panelH = 30;
               const fontSize = 6;
+              const panelY = fey - panelH - 4;
 
               panels.push(
                 <g key={groupKey} style={{ pointerEvents: "none" }}>
                   <rect
                     x={fex + 2}
-                    y={fey + 2}
+                    y={panelY}
                     width={panelW}
                     height={panelH}
                     fill="rgba(255,255,255,0.92)"
@@ -1279,7 +1280,7 @@ export function Canvas2D({
                   />
                   <text
                     x={fex + 5}
-                    y={fey + 2 + fontSize + 1}
+                    y={panelY + fontSize + 2}
                     fontSize={fontSize}
                     fontFamily="sans-serif"
                     fill="#1a1a2e"
@@ -1288,7 +1289,7 @@ export function Canvas2D({
                   </text>
                   <text
                     x={fex + 5}
-                    y={fey + 2 + (fontSize + 2) * 2}
+                    y={panelY + (fontSize + 2) * 2 + 2}
                     fontSize={fontSize}
                     fontFamily="sans-serif"
                     fill="#1a1a2e"
@@ -1297,7 +1298,7 @@ export function Canvas2D({
                   </text>
                   <text
                     x={fex + 5}
-                    y={fey + 2 + (fontSize + 2) * 3}
+                    y={panelY + (fontSize + 2) * 3 + 2}
                     fontSize={fontSize}
                     fontFamily="sans-serif"
                     fill="#1a1a2e"
