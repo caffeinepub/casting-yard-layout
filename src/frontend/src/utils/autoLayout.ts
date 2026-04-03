@@ -68,6 +68,96 @@ function getBoundingBox(points: BoundaryPoint[]) {
 }
 
 /**
+ * Compute the x-range [minX, maxX] of a convex or concave polygon
+ * at a given horizontal scan-line y.
+ * Returns null if the scanline does not intersect the polygon.
+ */
+function polygonXRangeAtY(
+  points: BoundaryPoint[],
+  y: number,
+): { minX: number; maxX: number } | null {
+  const n = points.length;
+  const intersections: number[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % n];
+
+    const ay = a.y;
+    const by = b.y;
+
+    // Skip horizontal edges
+    if (Math.abs(ay - by) < 1e-10) continue;
+
+    // Check if y is in the range (min, max] of this edge
+    const minEdgeY = Math.min(ay, by);
+    const maxEdgeY = Math.max(ay, by);
+
+    if (y < minEdgeY || y > maxEdgeY) continue;
+
+    // Interpolate x at y
+    const t = (y - ay) / (by - ay);
+    const x = a.x + t * (b.x - a.x);
+    intersections.push(x);
+  }
+
+  if (intersections.length === 0) return null;
+
+  return {
+    minX: Math.min(...intersections),
+    maxX: Math.max(...intersections),
+  };
+}
+
+/**
+ * Find the tightest horizontal extent of the polygon that fits
+ * a rectangle of height `rectHeight` starting at `rectTop`,
+ * scanning multiple horizontal lines through the rectangle.
+ *
+ * Returns { left, right } — the x-range that keeps the rectangle inside
+ * the polygon at every scanned row, with the given inset.
+ */
+function getHorizontalExtentForRect(
+  points: BoundaryPoint[],
+  rectTop: number,
+  rectHeight: number,
+  inset: number,
+): { left: number; right: number } | null {
+  // Sample multiple horizontal lines through the rectangle
+  const SAMPLES = 10;
+  let globalLeft = Number.NEGATIVE_INFINITY;
+  let globalRight = Number.POSITIVE_INFINITY;
+
+  for (let s = 0; s <= SAMPLES; s++) {
+    const y = rectTop + (s / SAMPLES) * rectHeight;
+    const range = polygonXRangeAtY(points, y);
+    if (range === null) return null; // rectangle doesn't fit at this row
+    globalLeft = Math.max(globalLeft, range.minX + inset);
+    globalRight = Math.min(globalRight, range.maxX - inset);
+  }
+
+  if (globalLeft >= globalRight) return null;
+  return { left: globalLeft, right: globalRight };
+}
+
+/**
+ * Exported helper: compute the maximum bay length that fits inside a boundary
+ * polygon (with inset), for a bay of the given height starting at rectTop.
+ * Used by the wizard to display/enforce the max bay length.
+ */
+export function maxBayLengthForBoundary(
+  points: BoundaryPoint[],
+  rectTop: number,
+  rectHeight: number,
+  inset = 2,
+): number {
+  if (points.length < 3) return 0;
+  const extent = getHorizontalExtentForRect(points, rectTop, rectHeight, inset);
+  if (!extent) return 0;
+  return Math.max(0, extent.right - extent.left);
+}
+
+/**
  * Build all YardElement[] for an auto-layout from config.
  * Returns a flat array ready to be passed to onAddRawElements.
  */
@@ -77,18 +167,17 @@ export function buildAutoLayoutElements(
 ): YardElement[] {
   const { yardLength, yardWidth, bayCount, bayWidth, boundaryPoints } = config;
   const spacing = spacingSettings.bayVerticalSpacing;
+  const INSET = 2; // metres of clearance from boundary edges
 
   // ── Determine safe area for bay placement ──
-  // If a custom boundary polygon was drawn, use its bounding box (with a 2m inset)
-  // so bay corners never exceed the boundary from any direction.
   let safeMinX: number;
   let safeMinY: number;
   let safeMaxX: number;
   let safeMaxY: number;
-  const INSET = 2; // metres of clearance from boundary edges
 
   if (boundaryPoints && boundaryPoints.length >= 3) {
     const bb = getBoundingBox(boundaryPoints);
+    // Use inset bounding box as the outer safe zone
     safeMinX = bb.minX + INSET;
     safeMinY = bb.minY + INSET;
     safeMaxX = bb.maxX - INSET;
@@ -100,27 +189,57 @@ export function buildAutoLayoutElements(
     safeMaxY = yardWidth;
   }
 
-  const safeWidth = safeMaxX - safeMinX; // available horizontal space
-  const safeHeight = safeMaxY - safeMinY; // available vertical space
+  const safeHeight = safeMaxY - safeMinY;
 
-  // Bay length must not exceed the safe width
-  const bayLength = Math.min(config.bayLength, safeWidth);
-
-  // ── Bay layout geometry ──
+  // ── Determine bay vertical stacking layout ──
   const totalHeight = bayCount * bayWidth + (bayCount - 1) * spacing;
-
-  // Center bays within the safe area
-  const startX = safeMinX + Math.max(0, (safeWidth - bayLength) / 2);
   const startY = safeMinY + Math.max(0, (safeHeight - totalHeight) / 2);
-
-  // Clamp so no edge ever leaves the safe zone
-  const clampedStartX = Math.max(
-    safeMinX,
-    Math.min(startX, safeMaxX - bayLength),
-  );
   const clampedStartY = Math.max(
     safeMinY,
     Math.min(startY, safeMaxY - totalHeight),
+  );
+
+  // ── Determine bay horizontal extent ──
+  // For polygon boundaries, scan the actual polygon edges across the entire
+  // vertical span of all bays (plus roads) to find the tightest valid x-range.
+  // This ensures no bay corner protrudes outside the drawn boundary.
+  let bayLeft: number;
+  let bayRight: number;
+
+  if (boundaryPoints && boundaryPoints.length >= 3) {
+    // Span covers all bays vertically (top of first bay to bottom of last)
+    const spanTop = clampedStartY;
+    const spanBottom = clampedStartY + totalHeight;
+    const spanHeight = spanBottom - spanTop;
+
+    const extent = getHorizontalExtentForRect(
+      boundaryPoints,
+      spanTop,
+      spanHeight,
+      INSET,
+    );
+
+    if (extent) {
+      bayLeft = extent.left;
+      bayRight = extent.right;
+    } else {
+      // Fallback: use bounding box inset
+      bayLeft = safeMinX;
+      bayRight = safeMaxX;
+    }
+  } else {
+    bayLeft = safeMinX;
+    bayRight = safeMaxX;
+  }
+
+  // Bay length = whatever the user requested, capped to the available safe width
+  const availableWidth = bayRight - bayLeft;
+  const bayLength = Math.min(config.bayLength, availableWidth);
+
+  // Center bays horizontally within the safe extent
+  const clampedStartX = Math.max(
+    bayLeft,
+    Math.min(bayLeft + (availableWidth - bayLength) / 2, bayRight - bayLength),
   );
 
   const allElements: YardElement[] = [];

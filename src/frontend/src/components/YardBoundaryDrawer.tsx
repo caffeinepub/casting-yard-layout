@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoundaryPoint, NewYardConfig } from "../utils/autoLayout";
-import { sectionCount } from "../utils/autoLayout";
+import { maxBayLengthForBoundary, sectionCount } from "../utils/autoLayout";
 
 interface YardBoundaryDrawerProps {
   onConfirm: (config: NewYardConfig) => void;
@@ -30,6 +30,7 @@ interface BayConfigModalProps {
   onBack: () => void;
   boundingWidth: number;
   boundingHeight: number;
+  translatedBoundaryPoints: { x: number; y: number }[];
 }
 
 function BayConfigModal({
@@ -37,8 +38,16 @@ function BayConfigModal({
   onBack,
   boundingWidth,
   boundingHeight,
+  translatedBoundaryPoints,
 }: BayConfigModalProps) {
-  const maxBayLength = Math.floor(boundingWidth);
+  // Use actual polygon shape (with 2m inset) to compute the real max bay length.
+  // Fall back to bounding-box minus 4m if polygon check fails.
+  const maxBayLength = Math.max(
+    1,
+    translatedBoundaryPoints.length >= 3
+      ? Math.floor(maxBayLengthForBoundary(translatedBoundaryPoints, 20, 30, 2))
+      : Math.floor(boundingWidth) - 4,
+  );
 
   const [bayCount, setBayCount] = useState("3");
   // Auto-set bay length to the max allowed by the boundary
@@ -931,14 +940,24 @@ export function YardBoundaryDrawer({
       </div>
 
       {/* Bay config modal overlay */}
-      {showBayConfig && bb && (
-        <BayConfigModal
-          onConfirm={handleBayConfigConfirm}
-          onBack={() => setShowBayConfig(false)}
-          boundingWidth={bb.width}
-          boundingHeight={bb.height}
-        />
-      )}
+      {showBayConfig &&
+        bb &&
+        (() => {
+          const margin = 20;
+          const tPts = points.map((p) => ({
+            x: p.x - bb.minX + margin,
+            y: p.y - bb.minY + margin,
+          }));
+          return (
+            <BayConfigModal
+              onConfirm={handleBayConfigConfirm}
+              onBack={() => setShowBayConfig(false)}
+              boundingWidth={bb.width}
+              boundingHeight={bb.height}
+              translatedBoundaryPoints={tPts}
+            />
+          );
+        })()}
     </div>
   );
 }
