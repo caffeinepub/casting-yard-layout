@@ -9,12 +9,15 @@ import {
   Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { SavedProject } from "../types/project";
+import type { NewYardConfig } from "../utils/autoLayout";
+import { NewYardWizard } from "./NewYardWizard";
 
 interface DashboardProps {
   projects: SavedProject[];
   onCreateNew: () => void;
+  onCreateNewWithConfig: (config: NewYardConfig) => void;
   onOpenProject: (project: SavedProject) => void;
   onDeleteProject: (id: string) => void;
   onOpenSample: (url: string, name: string) => void;
@@ -35,12 +38,13 @@ function formatDate(iso: string): string {
 
 export function Dashboard({
   projects,
-  onCreateNew,
+  onCreateNewWithConfig,
   onOpenProject,
   onDeleteProject,
   onOpenSample,
 }: DashboardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   function handleLoadFile() {
     fileInputRef.current?.click();
@@ -70,6 +74,15 @@ export function Dashboard({
     };
     reader.readAsText(file);
     e.target.value = "";
+  }
+
+  function openWizard() {
+    setWizardOpen(true);
+  }
+
+  function handleWizardConfirm(config: NewYardConfig) {
+    setWizardOpen(false);
+    onCreateNewWithConfig(config);
   }
 
   const sampleUrl =
@@ -145,7 +158,7 @@ export function Dashboard({
             </button>
 
             <Button
-              onClick={onCreateNew}
+              onClick={openWizard}
               className="flex items-center gap-2 text-sm font-bold px-5 py-2"
               style={{ backgroundColor: "#1E7ACB", color: "white" }}
               data-ocid="dashboard.create_new.primary_button"
@@ -360,7 +373,7 @@ export function Dashboard({
                 Load from File
               </button>
               <Button
-                onClick={onCreateNew}
+                onClick={openWizard}
                 className="flex items-center gap-2 text-sm font-bold px-5 py-2"
                 style={{ backgroundColor: "#1E7ACB", color: "white" }}
                 data-ocid="dashboard.empty_create_new.primary_button"
@@ -523,6 +536,13 @@ export function Dashboard({
         accept=".cyld,.json"
         className="hidden"
         onChange={handleFileChange}
+      />
+
+      {/* New Yard Wizard */}
+      <NewYardWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onConfirm={handleWizardConfirm}
       />
     </div>
   );

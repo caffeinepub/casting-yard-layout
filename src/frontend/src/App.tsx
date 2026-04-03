@@ -26,6 +26,8 @@ import {
   ELEMENT_COLORS,
 } from "./types/yard";
 import type { SpacingSettings } from "./types/yard";
+import { buildAutoLayoutElements } from "./utils/autoLayout";
+import type { NewYardConfig } from "./utils/autoLayout";
 
 let nextId = BigInt(100);
 function genId(): bigint {
@@ -62,6 +64,8 @@ export default function App() {
   const [spacingSettings, setSpacingSettings] = useState<SpacingSettings>(
     DEFAULT_SPACING_SETTINGS,
   );
+  const [pendingAutoPlacement, setPendingAutoPlacement] =
+    useState<NewYardConfig | null>(null);
 
   const clipboard = useRef<YardElement[]>([]);
   const lastPlacedRef = useRef<{
@@ -666,6 +670,24 @@ export default function App() {
     setScreen("editor");
   }, []);
 
+  const handleCreateNewWithConfig = useCallback((config: NewYardConfig) => {
+    setElements([]);
+    setTextLabels([]);
+    setLibraryItems([]);
+    setSelectedIds(new Set());
+    setProjectName("New Casting Yard");
+    setYardLength(config.yardLength);
+    setYardWidth(config.yardWidth);
+    setActiveProjectId(null);
+    lastPlacedRef.current = null;
+    undoStack.current = [];
+    redoStack.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+    setPendingAutoPlacement(config);
+    setScreen("editor");
+  }, []);
+
   const handleOpenProject = useCallback(
     (project: SavedProject) => {
       const ok = loadFromRaw(project.data, project.projectName);
@@ -714,6 +736,28 @@ export default function App() {
   const handleGoToDashboard = useCallback(() => {
     setScreen("dashboard");
   }, []);
+
+  // Auto-placement effect: fires once when editor opens via wizard
+  useEffect(() => {
+    if (screen !== "editor" || pendingAutoPlacement === null) return;
+    const config = pendingAutoPlacement;
+    setPendingAutoPlacement(null);
+    const autoElements = buildAutoLayoutElements(config, spacingSettings);
+    if (autoElements.length === 0) return;
+    pushHistory();
+    setElements(autoElements);
+    setSelectedIds(new Set());
+    refreshUndoRedo();
+    toast.success(
+      `Auto-placed ${autoElements.length} elements for ${config.bayCount} bay${config.bayCount !== 1 ? "s" : ""}`,
+    );
+  }, [
+    screen,
+    pendingAutoPlacement,
+    spacingSettings,
+    pushHistory,
+    refreshUndoRedo,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -843,6 +887,7 @@ export default function App() {
         <Dashboard
           projects={projects}
           onCreateNew={handleCreateNew}
+          onCreateNewWithConfig={handleCreateNewWithConfig}
           onOpenProject={handleOpenProject}
           onDeleteProject={deleteProject}
           onOpenSample={handleOpenSampleProject}
