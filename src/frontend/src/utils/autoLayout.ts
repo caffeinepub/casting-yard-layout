@@ -162,6 +162,11 @@ export function maxBayLengthForBoundary(
  * inside the polygon, so bays in wider parts of the polygon are longer
  * and bays in narrower parts are shorter. All bays are parallel (same Y rows)
  * but can have different lengths and start X positions.
+ *
+ * When a polygon boundary is drawn, each bay uses the MAXIMUM available width
+ * at its Y position (starting from the polygon left edge), not centered or
+ * capped by the user-specified bay length. This ensures bays fill the polygon
+ * horizontally as much as possible.
  */
 export function buildAutoLayoutElements(
   config: NewYardConfig,
@@ -212,6 +217,10 @@ export function buildAutoLayoutElements(
   // Each bay gets its OWN horizontal extent by scanning the polygon
   // independently at that bay's Y range. Bays are parallel but can differ
   // in length and start X based on where the boundary is at their Y position.
+  //
+  // When a polygon is drawn: use the FULL available width (left → right) at
+  // each bay's Y position, so the bay spans the maximum polygon width there.
+  // When no polygon: use user-specified bayLength, centered in safe area.
   const bayRefs: YardElement[] = [];
   let curY = clampedStartY;
 
@@ -226,7 +235,6 @@ export function buildAutoLayoutElements(
 
   for (let i = 0; i < bayCount; i++) {
     const bayTop = curY;
-    // bayBottom unused, scanlines handled by getHorizontalExtentForRect
 
     let left: number;
     let right: number;
@@ -244,7 +252,7 @@ export function buildAutoLayoutElements(
         left = extent.left;
         right = extent.right;
       } else {
-        // Bay doesn't fit inside boundary at this Y — skip or use safe box
+        // Bay doesn't fit inside boundary at this Y — fall back to safe box
         left = safeMinX;
         right = safeMaxX;
       }
@@ -253,10 +261,20 @@ export function buildAutoLayoutElements(
       right = safeMaxX;
     }
 
-    // Cap bay length to user-requested value, positioned centered in available space
     const available = right - left;
-    const thisLen = Math.min(config.bayLength, available);
-    const thisStartX = left + (available - thisLen) / 2;
+
+    let thisLen: number;
+    let thisStartX: number;
+
+    if (boundaryPoints && boundaryPoints.length >= 3) {
+      // Polygon mode: use full available width, bay starts at polygon left edge
+      thisLen = available;
+      thisStartX = left;
+    } else {
+      // Dimension mode: cap to user-specified length, centered in safe area
+      thisLen = Math.min(config.bayLength, available);
+      thisStartX = left + (available - thisLen) / 2;
+    }
 
     bayExtents.push({
       bayY: bayTop,
@@ -496,104 +514,67 @@ export function buildAutoLayoutElements(
   }
 
   // ── Barricade blocks ──
-  // Blue concrete blocks placed outside each road along its full length.
-  // Specs: 10m length, 0.2m thickness, 5m height (3D), blue (#1e40af)
-  // 0.5m spacing between consecutive blocks.
-  const BARRICADE_LENGTH = 10;
-  const BARRICADE_THICKNESS = 0.2;
-  const BARRICADE_HEIGHT_3D = 5;
-  const BARRICADE_SPACING = 0.5;
-  const BARRICADE_STEP = BARRICADE_LENGTH + BARRICADE_SPACING;
-  const BARRICADE_COLOR = "#1e40af";
+  // Blue barricade blocks placed ONLY outside the polygon boundary roads.
+  // They appear on the outer side of each Road-Boundary element (away from polygon centroid).
+  // Specs: 10m length, 0.2m thickness, 5m height (3D), blue (#1e40af), 0.5m spacing.
+  if (boundaryPoints && boundaryPoints.length >= 3) {
+    const BARRICADE_LENGTH = 10;
+    const BARRICADE_THICKNESS = 0.2;
+    const BARRICADE_HEIGHT_3D = 5;
+    const BARRICADE_SPACING = 0.5;
+    const BARRICADE_STEP = BARRICADE_LENGTH + BARRICADE_SPACING;
+    const BARRICADE_COLOR = "#1e40af";
 
-  // Helper: place barricade row along a horizontal span
-  function placeBarricadeRow(
-    startX: number,
-    roadLength: number,
-    sideY: number,
-    angle: number,
-  ) {
-    let offset = 0;
-    while (offset + BARRICADE_LENGTH <= roadLength + 0.01) {
-      const blockLen = Math.min(BARRICADE_LENGTH, roadLength - offset);
-      if (blockLen < 0.5) break;
-      allElements.push({
-        id: makeId(),
-        name: "Barricade",
-        elementType: "custom",
-        width: blockLen,
-        height: BARRICADE_THICKNESS,
-        xPosition: startX + offset,
-        yPosition: sideY,
-        rotationAngle: angle,
-        color: BARRICADE_COLOR,
-        status: "planned",
-        height3d: BARRICADE_HEIGHT_3D,
-        shape: "rectangle",
-      });
-      offset += BARRICADE_STEP;
-    }
-  }
+    // Compute polygon centroid to determine which side of each boundary road is "outside"
+    const centroidX =
+      boundaryPoints.reduce((s, p) => s + p.x, 0) / boundaryPoints.length;
+    const centroidY =
+      boundaryPoints.reduce((s, p) => s + p.y, 0) / boundaryPoints.length;
 
-  // Place barricades for horizontal Roads (top + bottom edges)
-  const horizontalRoads = allElements.filter(
-    (el) => el.name === "Road" && el.rotationAngle === 0,
-  );
-  for (const road of horizontalRoads) {
-    // Top side (just above the road)
-    placeBarricadeRow(
-      road.xPosition,
-      road.width,
-      road.yPosition - BARRICADE_THICKNESS,
-      0,
+    const boundaryRoads = allElements.filter(
+      (el) => el.name === "Road-Boundary",
     );
-    // Bottom side (just below the road)
-    placeBarricadeRow(
-      road.xPosition,
-      road.width,
-      road.yPosition + road.height,
-      0,
-    );
-  }
+    for (const road of boundaryRoads) {
+      const angleRad = (road.rotationAngle * Math.PI) / 180;
+      const edgeLen = road.width; // width = edge length before rotation
+      const roadH = road.height; // = ROAD_WIDTH = 10
 
-  // Place barricades for Road-Boundary (rotated, along each polygon edge)
-  const boundaryRoads = allElements.filter((el) => el.name === "Road-Boundary");
-  for (const road of boundaryRoads) {
-    const angleRad = (road.rotationAngle * Math.PI) / 180;
-    const edgeLen = road.width; // width = edge length before rotation
-    const roadH = road.height; // = ROAD_WIDTH = 10
+      // Road center
+      const cx = road.xPosition + edgeLen / 2;
+      const cy = road.yPosition + roadH / 2;
 
-    // The road is centered on the edge midpoint: center = (xPosition + width/2, yPosition + height/2)
-    const cx = road.xPosition + edgeLen / 2;
-    const cy = road.yPosition + roadH / 2;
+      // Perpendicular direction: angle + 90°
+      const perpX = -Math.sin(angleRad);
+      const perpY = Math.cos(angleRad);
 
-    // Perpendicular direction (outward from road on both sides)
-    // Road runs along angle, perpendicular is angle + 90°
-    const perpX = -Math.sin(angleRad);
-    const perpY = Math.cos(angleRad);
+      // Offset from road center to barricade row center (flush at road outer edge)
+      const offset = roadH / 2;
 
-    // Offset for the barricade row: half road height + 0 gap (flush outside)
-    const offset = roadH / 2 + 0; // no extra gap, flush outside
+      // Determine which sign is "outward" (away from centroid)
+      // Test both candidate row centers and pick the one further from centroid
+      const rowCx_pos = cx + offset * perpX;
+      const rowCy_pos = cy + offset * perpY;
+      const rowCx_neg = cx - offset * perpX;
+      const rowCy_neg = cy - offset * perpY;
 
-    // For both sides (+perp and -perp)
-    for (const sign of [-1, 1]) {
-      // Center of barricade row
-      const rowCx = cx + sign * offset * perpX;
-      const rowCy = cy + sign * offset * perpY;
+      const dist_pos = Math.hypot(rowCx_pos - centroidX, rowCy_pos - centroidY);
+      const dist_neg = Math.hypot(rowCx_neg - centroidX, rowCy_neg - centroidY);
 
-      // Place individual blocks along the row
+      // Use the side further from centroid (i.e., outside the polygon)
+      const outSign = dist_pos >= dist_neg ? 1 : -1;
+      const rowCx = cx + outSign * offset * perpX;
+      const rowCy = cy + outSign * offset * perpY;
+
+      // Place barricade blocks along this outer row
       let blockOffset = 0;
       while (blockOffset + BARRICADE_LENGTH <= edgeLen + 0.01) {
         const blockLen = Math.min(BARRICADE_LENGTH, edgeLen - blockOffset);
         if (blockLen < 0.5) break;
 
-        // Block center along the row
         const blockCenterLocal = blockOffset + blockLen / 2 - edgeLen / 2;
-        // Block top-left in local (unrotated) coordinates relative to row center
         const localX = blockCenterLocal - blockLen / 2;
         const localY = -BARRICADE_THICKNESS / 2;
 
-        // Rotate local offset by road angle
         const rotatedX =
           localX * Math.cos(angleRad) - localY * Math.sin(angleRad);
         const rotatedY =
