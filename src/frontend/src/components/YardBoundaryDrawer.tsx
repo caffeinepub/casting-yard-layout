@@ -41,13 +41,22 @@ function BayConfigModal({
   translatedBoundaryPoints,
 }: BayConfigModalProps) {
   // Use actual polygon shape (with 2m inset) to compute the real max bay length.
-  // Fall back to bounding-box minus 4m if polygon check fails.
-  const maxBayLength = Math.max(
-    1,
+  // Scan at center of polygon height for best coverage, fall back to bounding-box width.
+  const fallbackLen = Math.max(30, Math.floor(boundingWidth) - 4);
+  const centerY = 20 + boundingHeight / 2;
+  const scanHeight = Math.min(30, boundingHeight / 2);
+  const polygonLen =
     translatedBoundaryPoints.length >= 3
-      ? Math.floor(maxBayLengthForBoundary(translatedBoundaryPoints, 20, 30, 2))
-      : Math.floor(boundingWidth) - 4,
-  );
+      ? Math.floor(
+          maxBayLengthForBoundary(
+            translatedBoundaryPoints,
+            centerY - scanHeight / 2,
+            scanHeight,
+            2,
+          ),
+        )
+      : 0;
+  const maxBayLength = polygonLen >= 10 ? polygonLen : fallbackLen;
 
   const [bayCount, setBayCount] = useState("3");
   // Auto-set bay length to the max allowed by the boundary

@@ -946,7 +946,8 @@ export function Canvas2D({
                 ) : el.imageUrl &&
                   (el.name === "Reinforcement-Cage" ||
                     el.name === "Factory-Shed" ||
-                    el.name === "Road") ? (
+                    el.name === "Road" ||
+                    el.name === "Road-Boundary") ? (
                   <>
                     <defs>
                       <pattern

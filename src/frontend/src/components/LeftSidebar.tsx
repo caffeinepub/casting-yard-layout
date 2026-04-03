@@ -662,7 +662,7 @@ export function LeftSidebar({
   // If any non-bay, non-road elements already exist on the bay, start after the
   // rightmost edge of those elements + 2m spacing; otherwise use the default left margin.
   const getAutoStartX = (bay: YardElement, defaultMargin: number): number => {
-    const BAY_TYPES = ["Bay", "Road", "Road-Vertical"];
+    const BAY_TYPES = ["Bay", "Road", "Road-Vertical", "Road-Boundary"];
     const existing = placedElements.filter(
       (el) =>
         !BAY_TYPES.includes(el.name) &&
@@ -860,45 +860,6 @@ export function LeftSidebar({
       height: ROAD_WIDTH,
       xPosition: startX,
       yPosition: lastBayEndY + 0.5,
-      rotationAngle: 0,
-      color: "#888888",
-      status: "planned",
-      height3d: 0.1,
-      shape: "rectangle",
-      imageUrl: ROAD_IMAGE,
-    });
-
-    // Vertical roads on left and right sides, spanning from top of top road to bottom of bottom road
-    const topRoadTop = topBayY - ROAD_WIDTH - 0.5;
-    const bottomRoadBottom = lastBayEndY + 0.5 + ROAD_WIDTH;
-    const verticalRoadHeight = bottomRoadBottom - topRoadTop;
-
-    // Left vertical road
-    allElements.push({
-      id: BigInt(Date.now()) * 100000n + 9999996n,
-      name: "Road-Vertical",
-      elementType: "custom",
-      width: ROAD_WIDTH,
-      height: verticalRoadHeight,
-      xPosition: startX - ROAD_WIDTH,
-      yPosition: topRoadTop,
-      rotationAngle: 0,
-      color: "#888888",
-      status: "planned",
-      height3d: 0.1,
-      shape: "rectangle",
-      imageUrl: ROAD_IMAGE,
-    });
-
-    // Right vertical road
-    allElements.push({
-      id: BigInt(Date.now()) * 100000n + 9999997n,
-      name: "Road-Vertical",
-      elementType: "custom",
-      width: ROAD_WIDTH,
-      height: verticalRoadHeight,
-      xPosition: startX + bLength,
-      yPosition: topRoadTop,
       rotationAngle: 0,
       color: "#888888",
       status: "planned",

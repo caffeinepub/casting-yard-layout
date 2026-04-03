@@ -68,8 +68,7 @@ function getBoundingBox(points: BoundaryPoint[]) {
 }
 
 /**
- * Compute the x-range [minX, maxX] of a convex or concave polygon
- * at a given horizontal scan-line y.
+ * Compute the x-range [minX, maxX] of a polygon at a given horizontal scan-line y.
  * Returns null if the scanline does not intersect the polygon.
  */
 function polygonXRangeAtY(
@@ -86,16 +85,13 @@ function polygonXRangeAtY(
     const ay = a.y;
     const by = b.y;
 
-    // Skip horizontal edges
     if (Math.abs(ay - by) < 1e-10) continue;
 
-    // Check if y is in the range (min, max] of this edge
     const minEdgeY = Math.min(ay, by);
     const maxEdgeY = Math.max(ay, by);
 
     if (y < minEdgeY || y > maxEdgeY) continue;
 
-    // Interpolate x at y
     const t = (y - ay) / (by - ay);
     const x = a.x + t * (b.x - a.x);
     intersections.push(x);
@@ -110,12 +106,14 @@ function polygonXRangeAtY(
 }
 
 /**
- * Find the tightest horizontal extent of the polygon that fits
- * a rectangle of height `rectHeight` starting at `rectTop`,
- * scanning multiple horizontal lines through the rectangle.
+ * Find the tightest x-extent that fits a rectangle of height `rectHeight`
+ * starting at `rectTop` inside the polygon, sampled at multiple scanlines.
  *
- * Returns { left, right } — the x-range that keeps the rectangle inside
- * the polygon at every scanned row, with the given inset.
+ * Key insight: each bay is scanned INDEPENDENTLY at its own Y range.
+ * This means Bay 1 can have a different length and start X than Bay 2,
+ * depending on where the polygon boundary is at each bay's vertical position.
+ *
+ * Returns { left, right } or null if the rect doesn't fit.
  */
 function getHorizontalExtentForRect(
   points: BoundaryPoint[],
@@ -123,15 +121,14 @@ function getHorizontalExtentForRect(
   rectHeight: number,
   inset: number,
 ): { left: number; right: number } | null {
-  // Sample multiple horizontal lines through the rectangle
-  const SAMPLES = 10;
+  const SAMPLES = 20;
   let globalLeft = Number.NEGATIVE_INFINITY;
   let globalRight = Number.POSITIVE_INFINITY;
 
   for (let s = 0; s <= SAMPLES; s++) {
     const y = rectTop + (s / SAMPLES) * rectHeight;
     const range = polygonXRangeAtY(points, y);
-    if (range === null) return null; // rectangle doesn't fit at this row
+    if (range === null) return null;
     globalLeft = Math.max(globalLeft, range.minX + inset);
     globalRight = Math.min(globalRight, range.maxX - inset);
   }
@@ -160,6 +157,11 @@ export function maxBayLengthForBoundary(
 /**
  * Build all YardElement[] for an auto-layout from config.
  * Returns a flat array ready to be passed to onAddRawElements.
+ *
+ * Per-bay length: each bay is fitted independently at its own Y position
+ * inside the polygon, so bays in wider parts of the polygon are longer
+ * and bays in narrower parts are shorter. All bays are parallel (same Y rows)
+ * but can have different lengths and start X positions.
  */
 export function buildAutoLayoutElements(
   config: NewYardConfig,
@@ -167,7 +169,7 @@ export function buildAutoLayoutElements(
 ): YardElement[] {
   const { yardLength, yardWidth, bayCount, bayWidth, boundaryPoints } = config;
   const spacing = spacingSettings.bayVerticalSpacing;
-  const INSET = 2; // metres of clearance from boundary edges
+  const INSET = 2;
 
   // ── Determine safe area for bay placement ──
   let safeMinX: number;
@@ -177,7 +179,6 @@ export function buildAutoLayoutElements(
 
   if (boundaryPoints && boundaryPoints.length >= 3) {
     const bb = getBoundingBox(boundaryPoints);
-    // Use inset bounding box as the outer safe zone
     safeMinX = bb.minX + INSET;
     safeMinY = bb.minY + INSET;
     safeMaxX = bb.maxX - INSET;
@@ -199,49 +200,6 @@ export function buildAutoLayoutElements(
     Math.min(startY, safeMaxY - totalHeight),
   );
 
-  // ── Determine bay horizontal extent ──
-  // For polygon boundaries, scan the actual polygon edges across the entire
-  // vertical span of all bays (plus roads) to find the tightest valid x-range.
-  // This ensures no bay corner protrudes outside the drawn boundary.
-  let bayLeft: number;
-  let bayRight: number;
-
-  if (boundaryPoints && boundaryPoints.length >= 3) {
-    // Span covers all bays vertically (top of first bay to bottom of last)
-    const spanTop = clampedStartY;
-    const spanBottom = clampedStartY + totalHeight;
-    const spanHeight = spanBottom - spanTop;
-
-    const extent = getHorizontalExtentForRect(
-      boundaryPoints,
-      spanTop,
-      spanHeight,
-      INSET,
-    );
-
-    if (extent) {
-      bayLeft = extent.left;
-      bayRight = extent.right;
-    } else {
-      // Fallback: use bounding box inset
-      bayLeft = safeMinX;
-      bayRight = safeMaxX;
-    }
-  } else {
-    bayLeft = safeMinX;
-    bayRight = safeMaxX;
-  }
-
-  // Bay length = whatever the user requested, capped to the available safe width
-  const availableWidth = bayRight - bayLeft;
-  const bayLength = Math.min(config.bayLength, availableWidth);
-
-  // Center bays horizontally within the safe extent
-  const clampedStartX = Math.max(
-    bayLeft,
-    Math.min(bayLeft + (availableWidth - bayLength) / 2, bayRight - bayLength),
-  );
-
   const allElements: YardElement[] = [];
   let idSeq = 0;
 
@@ -250,19 +208,82 @@ export function buildAutoLayoutElements(
     return BigInt(Date.now()) * 100000n + BigInt(idSeq);
   };
 
-  // ── 1. Build Bays + between-bay roads ──
+  // ── 1. Build Bays ──
+  // Each bay gets its OWN horizontal extent by scanning the polygon
+  // independently at that bay's Y range. Bays are parallel but can differ
+  // in length and start X based on where the boundary is at their Y position.
   const bayRefs: YardElement[] = [];
   let curY = clampedStartY;
 
+  // Compute per-bay extents
+  const bayExtents: Array<{
+    bayY: number;
+    left: number;
+    right: number;
+    bayLength: number;
+    startX: number;
+  }> = [];
+
   for (let i = 0; i < bayCount; i++) {
+    const bayTop = curY;
+    // bayBottom unused, scanlines handled by getHorizontalExtentForRect
+
+    let left: number;
+    let right: number;
+
+    if (boundaryPoints && boundaryPoints.length >= 3) {
+      // Scan polygon at THIS bay's Y range only
+      const extent = getHorizontalExtentForRect(
+        boundaryPoints,
+        bayTop,
+        bayWidth,
+        INSET,
+      );
+
+      if (extent) {
+        left = extent.left;
+        right = extent.right;
+      } else {
+        // Bay doesn't fit inside boundary at this Y — skip or use safe box
+        left = safeMinX;
+        right = safeMaxX;
+      }
+    } else {
+      left = safeMinX;
+      right = safeMaxX;
+    }
+
+    // Cap bay length to user-requested value, positioned centered in available space
+    const available = right - left;
+    const thisLen = Math.min(config.bayLength, available);
+    const thisStartX = left + (available - thisLen) / 2;
+
+    bayExtents.push({
+      bayY: bayTop,
+      left,
+      right,
+      bayLength: thisLen,
+      startX: thisStartX,
+    });
+
+    curY += bayWidth;
+    if (i < bayCount - 1) curY += spacing;
+  }
+
+  // Reset curY for building elements
+  curY = clampedStartY;
+
+  for (let i = 0; i < bayCount; i++) {
+    const { bayY, bayLength, startX } = bayExtents[i];
+
     const bay: YardElement = {
       id: makeId(),
       name: "Bay",
       elementType: "custom",
       width: bayLength,
       height: bayWidth,
-      xPosition: clampedStartX,
-      yPosition: curY,
+      xPosition: startX,
+      yPosition: bayY,
       rotationAngle: 0,
       color: "#1a6b2a",
       status: "planned",
@@ -271,17 +292,26 @@ export function buildAutoLayoutElements(
     };
     bayRefs.push(bay);
     allElements.push(bay);
-    curY += bayWidth;
 
+    // Road between this bay and next
     if (i < bayCount - 1) {
-      const roadY = curY + (spacing - ROAD_WIDTH) / 2;
+      const roadY = bayY + bayWidth + (spacing - ROAD_WIDTH) / 2;
+
+      // Road spans from the leftmost left to rightmost right of adjacent bays
+      const nextExt = bayExtents[i + 1];
+      const roadLeft = Math.min(startX, nextExt.startX);
+      const roadRight = Math.max(
+        startX + bayLength,
+        nextExt.startX + nextExt.bayLength,
+      );
+
       allElements.push({
         id: makeId(),
         name: "Road",
         elementType: "custom",
-        width: bayLength,
+        width: roadRight - roadLeft,
         height: ROAD_WIDTH,
-        xPosition: clampedStartX,
+        xPosition: roadLeft,
         yPosition: roadY,
         rotationAngle: 0,
         color: "#888888",
@@ -290,20 +320,21 @@ export function buildAutoLayoutElements(
         shape: "rectangle",
         imageUrl: ROAD_IMAGE,
       });
-      curY += spacing;
     }
   }
 
-  // Top road (0.5m above first bay)
-  const topBayY = clampedStartY;
+  // ── Top road (0.5m above first bay) ──
+  const firstExt = bayExtents[0];
+  const lastExt = bayExtents[bayCount - 1];
+
   allElements.unshift({
     id: makeId(),
     name: "Road",
     elementType: "custom",
-    width: bayLength,
+    width: firstExt.bayLength,
     height: ROAD_WIDTH,
-    xPosition: clampedStartX,
-    yPosition: topBayY - ROAD_WIDTH - 0.5,
+    xPosition: firstExt.startX,
+    yPosition: firstExt.bayY - ROAD_WIDTH - 0.5,
     rotationAngle: 0,
     color: "#888888",
     status: "planned",
@@ -312,15 +343,15 @@ export function buildAutoLayoutElements(
     imageUrl: ROAD_IMAGE,
   });
 
-  // Bottom road (0.5m below last bay)
-  const lastBayEndY = clampedStartY + totalHeight;
+  // ── Bottom road (0.5m below last bay) ──
+  const lastBayEndY = lastExt.bayY + bayWidth;
   allElements.push({
     id: makeId(),
     name: "Road",
     elementType: "custom",
-    width: bayLength,
+    width: lastExt.bayLength,
     height: ROAD_WIDTH,
-    xPosition: clampedStartX,
+    xPosition: lastExt.startX,
     yPosition: lastBayEndY + 0.5,
     rotationAngle: 0,
     color: "#888888",
@@ -330,42 +361,46 @@ export function buildAutoLayoutElements(
     imageUrl: ROAD_IMAGE,
   });
 
-  // Left/right vertical roads
-  const topRoadTop = topBayY - ROAD_WIDTH - 0.5;
-  const bottomRoadBottom = lastBayEndY + 0.5 + ROAD_WIDTH;
-  const vertRoadHeight = bottomRoadBottom - topRoadTop;
+  // ── Polygon boundary roads ──
+  // When a polygon boundary is drawn, place 10m-wide road segments along each edge,
+  // rotated to match the angle of that edge. Roads are placed offset outward by ROAD_WIDTH/2
+  // so they sit just outside (or along) the polygon perimeter.
+  if (boundaryPoints && boundaryPoints.length >= 3) {
+    const n = boundaryPoints.length;
+    for (let i = 0; i < n; i++) {
+      const a = boundaryPoints[i];
+      const b = boundaryPoints[(i + 1) % n];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const edgeLength = Math.sqrt(dx * dx + dy * dy);
+      if (edgeLength < 1) continue;
 
-  allElements.push({
-    id: makeId(),
-    name: "Road-Vertical",
-    elementType: "custom",
-    width: ROAD_WIDTH,
-    height: vertRoadHeight,
-    xPosition: clampedStartX - ROAD_WIDTH,
-    yPosition: topRoadTop,
-    rotationAngle: 0,
-    color: "#888888",
-    status: "planned",
-    height3d: 0.1,
-    shape: "rectangle",
-    imageUrl: ROAD_IMAGE,
-  });
+      // Angle in degrees (SVG rotate)
+      const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
 
-  allElements.push({
-    id: makeId(),
-    name: "Road-Vertical",
-    elementType: "custom",
-    width: ROAD_WIDTH,
-    height: vertRoadHeight,
-    xPosition: clampedStartX + bayLength,
-    yPosition: topRoadTop,
-    rotationAngle: 0,
-    color: "#888888",
-    status: "planned",
-    height3d: 0.1,
-    shape: "rectangle",
-    imageUrl: ROAD_IMAGE,
-  });
+      // Center of the edge segment
+      const cx = (a.x + b.x) / 2;
+      const cy = (a.y + b.y) / 2;
+
+      // The road rect: width = edgeLength, height = ROAD_WIDTH
+      // xPosition/yPosition = top-left before rotation, centered on edge midpoint
+      allElements.push({
+        id: makeId(),
+        name: "Road-Boundary",
+        elementType: "custom",
+        width: edgeLength,
+        height: ROAD_WIDTH,
+        xPosition: cx - edgeLength / 2,
+        yPosition: cy - ROAD_WIDTH / 2,
+        rotationAngle: angleDeg,
+        color: "#888888",
+        status: "planned",
+        height3d: 0.1,
+        shape: "rectangle",
+        imageUrl: ROAD_IMAGE,
+      });
+    }
+  }
 
   // ── 2. Place elements ON each bay ──
   const iGirderLength = 30;
@@ -380,10 +415,9 @@ export function buildAutoLayoutElements(
   const rcWidth = 0.8;
   const rcHeight3d = 2;
 
-  // 30% section max width for each section
-  const sectionMaxWidth = bayLength * 0.3;
-
   for (const bay of bayRefs) {
+    const sectionMaxWidth = bay.width * 0.3;
+
     // ── Section 1: I-Girders (left third) ──
     const iGirderStartX = bay.xPosition + spacingSettings.iGirderLeftMargin;
     placeColumnStack({
@@ -402,7 +436,6 @@ export function buildAutoLayoutElements(
       makeId,
     });
 
-    // Compute right edge of I-Girder section (capped at 30% of bay)
     const iGirderSectionRightEdge = iGirderStartX + sectionMaxWidth;
 
     // ── Section 2: Formwork + Shed (middle third) ──
@@ -472,7 +505,6 @@ interface StackParams {
   itemLength: number;
   itemWidth: number;
   startX: number;
-  /** Maximum horizontal width this section may occupy (30% of bay length). */
   maxSectionWidth: number;
   verticalGap: number;
   bayMargin: number;
@@ -516,13 +548,11 @@ function placeColumnStack(params: StackParams) {
       ? Math.floor((usableHeight + verticalGap) / verticalStep)
       : 1;
 
-  // How many full columns fit within maxSectionWidth?
   const maxColumns = Math.max(
     1,
     Math.floor((maxSectionWidth + columnGap) / (itemLength + columnGap)),
   );
 
-  // Total items that fill all available columns
   const totalCount = maxPerColumn * maxColumns;
 
   let placed = 0;
@@ -532,7 +562,6 @@ function placeColumnStack(params: StackParams) {
     const inThisCol = Math.min(maxPerColumn, totalCount - placed);
     const colX = startX + colIndex * (itemLength + columnGap);
 
-    // Verify column doesn't exceed section boundary
     if (colX + itemLength > startX + maxSectionWidth + 0.01) break;
 
     const colHeight = inThisCol * itemWidth + (inThisCol - 1) * verticalGap;
