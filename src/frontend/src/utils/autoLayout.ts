@@ -18,9 +18,31 @@ const SHED_IMAGE =
 
 const ROAD_WIDTH = 10;
 
-/** Number of items per section, based on bay length / 3 / 30 (girder default length). */
-export function sectionCount(bayLength: number): number {
-  return Math.max(1, Math.floor(bayLength / 3 / 30));
+/**
+ * Calculate how many items fit within a section:
+ * - Fill vertically (full bay height), then add columns up to 30% of bay length.
+ */
+export function sectionCount(
+  bayLength: number,
+  bayWidth: number,
+  itemLength: number,
+  itemWidth: number,
+  verticalGap: number,
+  bayMargin: number,
+  columnGap: number,
+): number {
+  const sectionMaxWidth = bayLength * 0.3;
+  const usableHeight = bayWidth - bayMargin * 2;
+  const verticalStep = itemWidth + verticalGap;
+  const maxPerColumn =
+    usableHeight >= itemWidth
+      ? Math.floor((usableHeight + verticalGap) / verticalStep)
+      : 1;
+  const maxColumns = Math.max(
+    1,
+    Math.floor((sectionMaxWidth + columnGap) / (itemLength + columnGap)),
+  );
+  return maxPerColumn * maxColumns;
 }
 
 /**
@@ -33,9 +55,6 @@ export function buildAutoLayoutElements(
 ): YardElement[] {
   const { yardLength, yardWidth, bayCount, bayLength, bayWidth } = config;
   const spacing = spacingSettings.bayVerticalSpacing;
-
-  // ── Section element counts ──
-  const perBayCount = sectionCount(bayLength);
 
   // ── Bay layout geometry ──
   const totalHeight = bayCount * bayWidth + (bayCount - 1) * spacing;
@@ -180,15 +199,18 @@ export function buildAutoLayoutElements(
   const rcWidth = 0.8;
   const rcHeight3d = 2;
 
+  // 30% section max width for each section
+  const sectionMaxWidth = bayLength * 0.3;
+
   for (const bay of bayRefs) {
     // ── Section 1: I-Girders (left third) ──
     const iGirderStartX = bay.xPosition + spacingSettings.iGirderLeftMargin;
     placeColumnStack({
       bay,
-      count: perBayCount,
       itemLength: iGirderLength,
       itemWidth: iGirderWidth,
       startX: iGirderStartX,
+      maxSectionWidth: sectionMaxWidth,
       verticalGap: spacingSettings.iGirderVerticalGap,
       bayMargin: spacingSettings.iGirderBayMargin,
       columnGap: spacingSettings.iGirderColumnGap,
@@ -199,26 +221,17 @@ export function buildAutoLayoutElements(
       makeId,
     });
 
-    // Compute right edge of I-Girder section
-    const iGirderSectionRightEdge = computeSectionRightEdge({
-      startX: iGirderStartX,
-      count: perBayCount,
-      itemLength: iGirderLength,
-      itemWidth: iGirderWidth,
-      verticalGap: spacingSettings.iGirderVerticalGap,
-      bayMargin: spacingSettings.iGirderBayMargin,
-      columnGap: spacingSettings.iGirderColumnGap,
-      bay,
-    });
+    // Compute right edge of I-Girder section (capped at 30% of bay)
+    const iGirderSectionRightEdge = iGirderStartX + sectionMaxWidth;
 
     // ── Section 2: Formwork + Shed (middle third) ──
     const fwStartX = iGirderSectionRightEdge + 2;
     placeColumnStack({
       bay,
-      count: perBayCount,
       itemLength: fwLength,
       itemWidth: fwWidth,
       startX: fwStartX,
+      maxSectionWidth: sectionMaxWidth,
       verticalGap: spacingSettings.formworkVerticalGap,
       bayMargin: spacingSettings.formworkBayMargin,
       columnGap: spacingSettings.formworkColumnGap,
@@ -229,24 +242,14 @@ export function buildAutoLayoutElements(
       makeId,
     });
 
-    const fwSectionRightEdge = computeSectionRightEdge({
-      startX: fwStartX,
-      count: perBayCount,
-      itemLength: fwLength,
-      itemWidth: fwWidth,
-      verticalGap: spacingSettings.formworkVerticalGap,
-      bayMargin: spacingSettings.formworkBayMargin,
-      columnGap: spacingSettings.formworkColumnGap,
-      bay,
-    });
+    const fwSectionRightEdge = fwStartX + sectionMaxWidth;
 
     // Factory-Shed over formwork
-    // Shed spans from fwStartX to fwSectionRightEdge, full bay height
     allElements.push({
       id: makeId(),
       name: "Factory-Shed",
       elementType: "custom",
-      width: fwSectionRightEdge - fwStartX,
+      width: sectionMaxWidth,
       height: bay.height,
       xPosition: fwStartX,
       yPosition: bay.yPosition,
@@ -262,10 +265,10 @@ export function buildAutoLayoutElements(
     const rcStartX = fwSectionRightEdge + 2;
     placeColumnStack({
       bay,
-      count: perBayCount,
       itemLength: rcLength,
       itemWidth: rcWidth,
       startX: rcStartX,
+      maxSectionWidth: sectionMaxWidth,
       verticalGap: spacingSettings.rcVerticalGap,
       bayMargin: spacingSettings.rcBayMargin,
       columnGap: spacingSettings.rcColumnGap,
@@ -285,10 +288,11 @@ export function buildAutoLayoutElements(
 
 interface StackParams {
   bay: YardElement;
-  count: number;
   itemLength: number;
   itemWidth: number;
   startX: number;
+  /** Maximum horizontal width this section may occupy (30% of bay length). */
+  maxSectionWidth: number;
   verticalGap: number;
   bayMargin: number;
   columnGap: number;
@@ -300,13 +304,19 @@ interface StackParams {
   makeId: () => bigint;
 }
 
+/**
+ * Place items in a column-first stack:
+ * - Fill as many items vertically as the bay height allows.
+ * - Add columns rightward until maxSectionWidth is exhausted.
+ * - Never places beyond startX + maxSectionWidth.
+ */
 function placeColumnStack(params: StackParams) {
   const {
     bay,
-    count,
     itemLength,
     itemWidth,
     startX,
+    maxSectionWidth,
     verticalGap,
     bayMargin,
     columnGap,
@@ -325,12 +335,25 @@ function placeColumnStack(params: StackParams) {
       ? Math.floor((usableHeight + verticalGap) / verticalStep)
       : 1;
 
+  // How many full columns fit within maxSectionWidth?
+  const maxColumns = Math.max(
+    1,
+    Math.floor((maxSectionWidth + columnGap) / (itemLength + columnGap)),
+  );
+
+  // Total items that fill all available columns
+  const totalCount = maxPerColumn * maxColumns;
+
   let placed = 0;
   let colIndex = 0;
 
-  while (placed < count) {
-    const inThisCol = Math.min(maxPerColumn, count - placed);
+  while (placed < totalCount && colIndex < maxColumns) {
+    const inThisCol = Math.min(maxPerColumn, totalCount - placed);
     const colX = startX + colIndex * (itemLength + columnGap);
+
+    // Verify column doesn't exceed section boundary
+    if (colX + itemLength > startX + maxSectionWidth + 0.01) break;
+
     const colHeight = inThisCol * itemWidth + (inThisCol - 1) * verticalGap;
     const colStartY =
       bay.yPosition + bayMargin + (usableHeight - colHeight) / 2;
@@ -356,38 +379,4 @@ function placeColumnStack(params: StackParams) {
     placed += inThisCol;
     colIndex++;
   }
-}
-
-interface EdgeParams {
-  bay: YardElement;
-  startX: number;
-  count: number;
-  itemLength: number;
-  itemWidth: number;
-  verticalGap: number;
-  bayMargin: number;
-  columnGap: number;
-}
-
-function computeSectionRightEdge(params: EdgeParams): number {
-  const {
-    startX,
-    count,
-    itemLength,
-    itemWidth,
-    verticalGap,
-    bayMargin,
-    columnGap,
-    bay,
-  } = params;
-
-  const verticalStep = itemWidth + verticalGap;
-  const usableHeight = bay.height - bayMargin * 2;
-  const maxPerColumn =
-    usableHeight >= itemWidth
-      ? Math.floor((usableHeight + verticalGap) / verticalStep)
-      : 1;
-
-  const colCount = Math.ceil(count / maxPerColumn);
-  return startX + colCount * itemLength + (colCount - 1) * columnGap;
 }

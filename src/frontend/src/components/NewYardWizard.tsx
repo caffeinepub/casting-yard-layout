@@ -215,7 +215,15 @@ export function NewYardWizard({
   }
 
   // Derived preview values
-  const perBay = sectionCount(Number(bayLength) || 150);
+  const perBay = sectionCount(
+    Number(bayLength) || 150,
+    Number(bayWidth) || 30,
+    30, // iGirderLength default
+    0.8, // iGirderWidth default
+    0.5, // verticalGap default
+    1, // bayMargin default
+    2, // columnGap default
+  );
   const nBays = Math.max(1, Number(bayCount) || 3);
   const bLen = Number(bayLength) || 150;
   const bWid = Number(bayWidth) || 30;

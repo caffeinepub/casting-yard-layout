@@ -689,20 +689,16 @@ export function LeftSidebar({
     const girderLength = Number.parseFloat(iGirderLength) || 30;
     const girderWidth = Number.parseFloat(iGirderWidth) || 0.8;
     const height3d = Number.parseFloat(iGirderHeight) || 2;
-    const countPerBay = Math.max(1, Number.parseInt(iGirderCount) || 1);
 
-    // Gap between bottom edge of one girder and top edge of the next = 0.5m
-    // Step from top edge to top edge = girderWidth (girder itself) + 0.5m (gap)
     const verticalStep = girderWidth + spacingSettings.iGirderVerticalGap;
 
     const allElements: YardElement[] = [];
 
     for (const bay of bays) {
-      // Usable vertical space inside bay
       const margin = spacingSettings.iGirderBayMargin;
       const usableHeight = bay.height - margin * 2;
 
-      // Max girders that fit vertically in one column
+      // Max girders that fit vertically in one column (fill bay height)
       const maxPerColumn =
         usableHeight >= girderWidth
           ? Math.floor(
@@ -714,17 +710,28 @@ export function LeftSidebar({
       // Horizontal start: after existing elements or default left margin
       const baseX = getAutoStartX(bay, spacingSettings.iGirderLeftMargin);
 
+      // 30% of bay length is the max horizontal section width
+      const sectionMaxWidth = bay.width * 0.3;
+      const maxColumns = Math.max(
+        1,
+        Math.floor(
+          (sectionMaxWidth + spacingSettings.iGirderColumnGap) /
+            (girderLength + spacingSettings.iGirderColumnGap),
+        ),
+      );
+      const totalCount = maxPerColumn * maxColumns;
+
       let placed = 0;
       let colIndex = 0;
 
-      while (placed < countPerBay) {
-        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
-
-        // Column x offset: each new column shifts right by girderLength + column gap
+      while (placed < totalCount && colIndex < maxColumns) {
+        const inThisCol = Math.min(maxPerColumn, totalCount - placed);
         const colX =
           baseX + colIndex * (girderLength + spacingSettings.iGirderColumnGap);
 
-        // Column total height
+        // Stop if column would exceed section boundary
+        if (colX + girderLength > baseX + sectionMaxWidth + 0.01) break;
+
         const colHeight =
           inThisCol * girderWidth +
           (inThisCol - 1) * spacingSettings.iGirderVerticalGap;
@@ -917,7 +924,6 @@ export function LeftSidebar({
     const girderLength = Number.parseFloat(rcLength) || 30;
     const girderWidth = Number.parseFloat(rcWidth) || 0.8;
     const height3d = Number.parseFloat(rcHeight) || 2;
-    const countPerBay = Math.max(1, Number.parseInt(rcCount) || 1);
 
     const verticalStep = girderWidth + spacingSettings.rcVerticalGap;
     const allElements: YardElement[] = [];
@@ -933,13 +939,28 @@ export function LeftSidebar({
           : 1;
 
       const baseX = getAutoStartX(bay, spacingSettings.rcLeftMargin);
+
+      // 30% of bay length caps the section width
+      const sectionMaxWidth = bay.width * 0.3;
+      const maxColumns = Math.max(
+        1,
+        Math.floor(
+          (sectionMaxWidth + spacingSettings.rcColumnGap) /
+            (girderLength + spacingSettings.rcColumnGap),
+        ),
+      );
+      const totalCount = maxPerColumn * maxColumns;
+
       let placed = 0;
       let colIndex = 0;
 
-      while (placed < countPerBay) {
-        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
+      while (placed < totalCount && colIndex < maxColumns) {
+        const inThisCol = Math.min(maxPerColumn, totalCount - placed);
         const colX =
           baseX + colIndex * (girderLength + spacingSettings.rcColumnGap);
+
+        if (colX + girderLength > baseX + sectionMaxWidth + 0.01) break;
+
         const colHeight =
           inThisCol * girderWidth +
           (inThisCol - 1) * spacingSettings.rcVerticalGap;
@@ -1046,7 +1067,6 @@ export function LeftSidebar({
     const fwLength = Number.parseFloat(formworkLength) || 30;
     const fwWidth = Number.parseFloat(formworkWidth) || 4;
     const height3d = Number.parseFloat(formworkHeight) || 6;
-    const countPerBay = Math.max(1, Number.parseInt(formworkCount) || 1);
 
     // Step from top edge to top edge = fwWidth + vertical gap
     const verticalStep = fwWidth + spacingSettings.formworkVerticalGap;
@@ -1054,11 +1074,10 @@ export function LeftSidebar({
     const allElements: YardElement[] = [];
 
     for (const bay of bays) {
-      // Usable vertical space inside bay
       const margin = spacingSettings.formworkBayMargin;
       const usableHeight = bay.height - margin * 2;
 
-      // Max formwork that fit vertically in one column
+      // Max formwork that fit vertically in one column (fill bay height)
       const maxPerColumn =
         usableHeight >= fwWidth
           ? Math.floor(
@@ -1070,17 +1089,27 @@ export function LeftSidebar({
       // Horizontal start: after existing elements or default left margin
       const baseX = getAutoStartX(bay, spacingSettings.formworkLeftMargin);
 
+      // 30% of bay length caps the section width
+      const sectionMaxWidth = bay.width * 0.3;
+      const maxColumns = Math.max(
+        1,
+        Math.floor(
+          (sectionMaxWidth + spacingSettings.formworkColumnGap) /
+            (fwLength + spacingSettings.formworkColumnGap),
+        ),
+      );
+      const totalCount = maxPerColumn * maxColumns;
+
       let placed = 0;
       let colIndex = 0;
 
-      while (placed < countPerBay) {
-        const inThisCol = Math.min(maxPerColumn, countPerBay - placed);
-
-        // Column x offset: each new column shifts right by fwLength + column gap
+      while (placed < totalCount && colIndex < maxColumns) {
+        const inThisCol = Math.min(maxPerColumn, totalCount - placed);
         const colX =
           baseX + colIndex * (fwLength + spacingSettings.formworkColumnGap);
 
-        // Column total height
+        if (colX + fwLength > baseX + sectionMaxWidth + 0.01) break;
+
         const colHeight =
           inThisCol * fwWidth +
           (inThisCol - 1) * spacingSettings.formworkVerticalGap;
