@@ -1100,6 +1100,32 @@ export function Canvas2D({
                       />
                     )}
                   </>
+                ) : el.name === "READY TO OCCUPY" ? (
+                  <>
+                    <rect
+                      x={ex}
+                      y={ey}
+                      width={ew}
+                      height={eh}
+                      fill="#ef4444"
+                      opacity={0.45}
+                      stroke="#dc2626"
+                      strokeWidth={1.5}
+                      strokeDasharray="6 3"
+                    />
+                    {isSelected && (
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill="none"
+                        stroke="#1E7ACB"
+                        strokeWidth={2}
+                        strokeDasharray="4 2"
+                      />
+                    )}
+                  </>
                 ) : (
                   <ElementShape
                     shape={el.shape}
@@ -1158,6 +1184,42 @@ export function Canvas2D({
                   ) {
                     // Info panels rendered in a separate top-layer pass below
                     return null;
+                  }
+
+                  if (el.name === "READY TO OCCUPY") {
+                    const fontSize = Math.min(
+                      12,
+                      Math.max(6, Math.min(ew, eh) / 6),
+                    );
+                    return (
+                      <g style={{ pointerEvents: "none" }}>
+                        <rect
+                          x={cx - ew * 0.35}
+                          y={cy - fontSize * 1.6}
+                          width={ew * 0.7}
+                          height={fontSize * 3.2}
+                          rx={3}
+                          fill="rgba(0,0,0,0.45)"
+                        />
+                        <text
+                          x={cx}
+                          y={cy - fontSize * 0.1}
+                          textAnchor="middle"
+                          fontSize={fontSize}
+                          fontWeight="700"
+                          fontFamily="sans-serif"
+                          fill="white"
+                          letterSpacing="0.5"
+                        >
+                          <tspan x={cx} dy={`-${fontSize * 0.7}px`}>
+                            READY TO
+                          </tspan>
+                          <tspan x={cx} dy={`${fontSize * 1.4}px`}>
+                            OCCUPY
+                          </tspan>
+                        </text>
+                      </g>
+                    );
                   }
 
                   // Default: show last word of element name

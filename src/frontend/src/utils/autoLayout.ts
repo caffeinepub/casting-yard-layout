@@ -648,6 +648,277 @@ export function buildAutoLayoutElements(
     }
   }
 
+  // ── READY TO OCCUPY blocks ──
+  // Fill empty space inside the polygon (or yard bounds) that is not occupied
+  // by bays or roads. Red blocks, 0.3m height (3D), named "READY TO OCCUPY".
+  {
+    const GRID = 10; // 10m grid cell size
+    const RTO_COLOR = "#ef4444";
+    const RTO_HEIGHT_3D = 0.3;
+    const RTO_MARGIN = 1; // 1m inset from boundary roads
+
+    // Determine scan area
+    let scanMinX: number;
+    let scanMinY: number;
+    let scanMaxX: number;
+    let scanMaxY: number;
+
+    if (boundaryPoints && boundaryPoints.length >= 3) {
+      const bb = getBoundingBox(boundaryPoints);
+      // Inset by road width + margin so we stay inside the barricade/road ring
+      const roadInset = ROAD_WIDTH + RTO_MARGIN;
+      scanMinX = bb.minX + roadInset;
+      scanMinY = bb.minY + roadInset;
+      scanMaxX = bb.maxX - roadInset;
+      scanMaxY = bb.maxY - roadInset;
+    } else {
+      // No polygon: use yard bounds inset by one road width
+      const roadInset = ROAD_WIDTH + RTO_MARGIN;
+      scanMinX = roadInset;
+      scanMinY = roadInset;
+      scanMaxX = yardLength - roadInset;
+      scanMaxY = yardWidth - roadInset;
+    }
+
+    if (scanMaxX > scanMinX + GRID && scanMaxY > scanMinY + GRID) {
+      // Collect axis-aligned occupied rectangles (bays + non-rotated roads)
+      // We ignore rotated boundary roads since they sit on the perimeter.
+      type Rect = { x1: number; y1: number; x2: number; y2: number };
+      const occupied: Rect[] = [];
+      for (const el of allElements) {
+        if (
+          el.name === "Bay" ||
+          el.name === "Road" ||
+          el.name === "Road-Boundary"
+        ) {
+          // Expand by 1m padding for breathing room
+          const pad = 1;
+          occupied.push({
+            x1: el.xPosition - pad,
+            y1: el.yPosition - pad,
+            x2: el.xPosition + el.width + pad,
+            y2: el.yPosition + el.height + pad,
+          });
+        }
+      }
+
+      // Point-in-polygon test (ray casting)
+      const isInsidePolygon = (px: number, py: number): boolean => {
+        if (!boundaryPoints || boundaryPoints.length < 3) return true;
+        const n = boundaryPoints.length;
+        let inside = false;
+        for (let i = 0, j = n - 1; i < n; j = i++) {
+          const xi = boundaryPoints[i].x;
+          const yi = boundaryPoints[i].y;
+          const xj = boundaryPoints[j].x;
+          const yj = boundaryPoints[j].y;
+          const intersect =
+            yi > py !== yj > py &&
+            px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+
+      // Grid scan
+      const cols = Math.ceil((scanMaxX - scanMinX) / GRID);
+      const rows = Math.ceil((scanMaxY - scanMinY) / GRID);
+      // free[row][col] = true means this cell is free
+      const free: boolean[][] = Array.from({ length: rows }, () =>
+        new Array(cols).fill(true),
+      );
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const cellX = scanMinX + c * GRID;
+          const cellY = scanMinY + r * GRID;
+          const cellCX = cellX + GRID / 2;
+          const cellCY = cellY + GRID / 2;
+
+          // Check if center is inside polygon
+          if (!isInsidePolygon(cellCX, cellCY)) {
+            free[r][c] = false;
+            continue;
+          }
+
+          // Check against occupied rectangles
+          for (const occ of occupied) {
+            if (
+              cellCX >= occ.x1 &&
+              cellCX <= occ.x2 &&
+              cellCY >= occ.y1 &&
+              cellCY <= occ.y2
+            ) {
+              free[r][c] = false;
+              break;
+            }
+          }
+        }
+      }
+
+      // Merge free cells into maximal horizontal strips per row, then merge
+      // vertically adjacent identical strips into larger rectangles.
+      // Simple approach: for each row, collect contiguous free runs.
+      // Then group runs with same col extents across consecutive rows.
+      interface Strip {
+        colStart: number;
+        colEnd: number; // exclusive
+        rowStart: number;
+        rowEnd: number; // exclusive
+      }
+
+      // Row strips: for each row, list of [colStart, colEnd)
+      const rowStrips: Array<Array<[number, number]>> = [];
+      for (let r = 0; r < rows; r++) {
+        const strips: Array<[number, number]> = [];
+        let start = -1;
+        for (let c = 0; c <= cols; c++) {
+          const isFree = c < cols && free[r][c];
+          if (isFree && start === -1) {
+            start = c;
+          } else if (!isFree && start !== -1) {
+            strips.push([start, c]);
+            start = -1;
+          }
+        }
+        rowStrips.push(strips);
+      }
+
+      // Merge identical strips vertically
+      const mergedRects: Strip[] = [];
+      // active: map from "colStart,colEnd" -> { rowStart, rowEnd }
+      const active = new Map<string, { rowStart: number; rowEnd: number }>();
+
+      for (let r = 0; r <= rows; r++) {
+        const currentStrips = r < rows ? rowStrips[r] : [];
+        const currentKeys = new Set(currentStrips.map(([s, e]) => `${s},${e}`));
+
+        // Close any active strips not in current row
+        for (const [key, val] of active.entries()) {
+          if (!currentKeys.has(key)) {
+            const [colStart, colEnd] = key.split(",").map(Number);
+            mergedRects.push({
+              colStart,
+              colEnd,
+              rowStart: val.rowStart,
+              rowEnd: r,
+            });
+            active.delete(key);
+          }
+        }
+
+        // Open new strips
+        for (const [s, e] of currentStrips) {
+          const key = `${s},${e}`;
+          if (!active.has(key)) {
+            active.set(key, { rowStart: r, rowEnd: r + 1 });
+          } else {
+            active.get(key)!.rowEnd = r + 1;
+          }
+        }
+      }
+
+      // Emit READY TO OCCUPY elements for each merged rect.
+      // Priority: place the biggest blocks (50×50m) first, then fill remaining
+      // space with progressively smaller blocks down to the 10×10m minimum.
+      const RTO_MAX_BLOCK = 50;
+
+      /**
+       * Greedily pack RTO blocks into a rectangle (rectX, rectY, rectW, rectH).
+       * Strategy: largest blocks first (50→40→30→20→10m squares).
+       * Uses a boolean occupancy grid of GRID-sized cells to track placed areas.
+       */
+      const packRTOBlocks = (
+        rectX: number,
+        rectY: number,
+        rectW: number,
+        rectH: number,
+      ) => {
+        const gridCols = Math.floor(rectW / GRID);
+        const gridRows = Math.floor(rectH / GRID);
+        if (gridCols < 1 || gridRows < 1) return;
+
+        // occupancy grid: used[row][col]
+        const used: boolean[][] = Array.from({ length: gridRows }, () =>
+          new Array(gridCols).fill(false),
+        );
+
+        // Block sizes from largest to smallest (multiples of GRID, capped at RTO_MAX_BLOCK)
+        const maxCells = Math.min(
+          Math.floor(RTO_MAX_BLOCK / GRID),
+          Math.min(gridCols, gridRows),
+        );
+        const blockSizes: number[] = [];
+        for (let s = maxCells; s >= 1; s--) {
+          blockSizes.push(s);
+        }
+
+        for (const sizeInCells of blockSizes) {
+          // Scan in row-major order for blocks of this size
+          let found = true;
+          while (found) {
+            found = false;
+            outer: for (let r = 0; r <= gridRows - sizeInCells; r++) {
+              for (let c = 0; c <= gridCols - sizeInCells; c++) {
+                // Check if all cells in sizeInCells×sizeInCells block are free
+                let allFree = true;
+                checkLoop: for (let dr = 0; dr < sizeInCells; dr++) {
+                  for (let dc = 0; dc < sizeInCells; dc++) {
+                    if (used[r + dr][c + dc]) {
+                      allFree = false;
+                      break checkLoop;
+                    }
+                  }
+                }
+                if (!allFree) continue;
+
+                // Place block: mark cells used
+                for (let dr = 0; dr < sizeInCells; dr++) {
+                  for (let dc = 0; dc < sizeInCells; dc++) {
+                    used[r + dr][c + dc] = true;
+                  }
+                }
+
+                // Emit element
+                const blockW = sizeInCells * GRID;
+                const blockH = sizeInCells * GRID;
+                allElements.push({
+                  id: makeId(),
+                  name: "READY TO OCCUPY",
+                  elementType: "custom",
+                  width: blockW,
+                  height: blockH,
+                  xPosition: rectX + c * GRID,
+                  yPosition: rectY + r * GRID,
+                  rotationAngle: 0,
+                  color: RTO_COLOR,
+                  status: "planned",
+                  height3d: RTO_HEIGHT_3D,
+                  shape: "rectangle",
+                });
+
+                found = true;
+                break outer;
+              }
+            }
+          }
+        }
+      };
+
+      for (const rect of mergedRects) {
+        const x = scanMinX + rect.colStart * GRID;
+        const y = scanMinY + rect.rowStart * GRID;
+        const w = (rect.colEnd - rect.colStart) * GRID;
+        const h = (rect.rowEnd - rect.rowStart) * GRID;
+
+        // Skip rects smaller than one grid cell (10×10m minimum)
+        if (w < GRID || h < GRID) continue;
+
+        packRTOBlocks(x, y, w, h);
+      }
+    }
+  }
+
   return allElements;
 }
 
