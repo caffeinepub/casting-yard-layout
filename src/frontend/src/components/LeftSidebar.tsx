@@ -662,7 +662,13 @@ export function LeftSidebar({
   // If any non-bay, non-road elements already exist on the bay, start after the
   // rightmost edge of those elements + 2m spacing; otherwise use the default left margin.
   const getAutoStartX = (bay: YardElement, defaultMargin: number): number => {
-    const BAY_TYPES = ["Bay", "Road", "Road-Vertical", "Road-Boundary"];
+    const BAY_TYPES = [
+      "Bay",
+      "Road",
+      "Road-Vertical",
+      "Road-Boundary",
+      "Barricade",
+    ];
     const existing = placedElements.filter(
       (el) =>
         !BAY_TYPES.includes(el.name) &&

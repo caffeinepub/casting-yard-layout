@@ -495,6 +495,129 @@ export function buildAutoLayoutElements(
     });
   }
 
+  // ── Barricade blocks ──
+  // Blue concrete blocks placed outside each road along its full length.
+  // Specs: 10m length, 0.2m thickness, 5m height (3D), blue (#1e40af)
+  // 0.5m spacing between consecutive blocks.
+  const BARRICADE_LENGTH = 10;
+  const BARRICADE_THICKNESS = 0.2;
+  const BARRICADE_HEIGHT_3D = 5;
+  const BARRICADE_SPACING = 0.5;
+  const BARRICADE_STEP = BARRICADE_LENGTH + BARRICADE_SPACING;
+  const BARRICADE_COLOR = "#1e40af";
+
+  // Helper: place barricade row along a horizontal span
+  function placeBarricadeRow(
+    startX: number,
+    roadLength: number,
+    sideY: number,
+    angle: number,
+  ) {
+    let offset = 0;
+    while (offset + BARRICADE_LENGTH <= roadLength + 0.01) {
+      const blockLen = Math.min(BARRICADE_LENGTH, roadLength - offset);
+      if (blockLen < 0.5) break;
+      allElements.push({
+        id: makeId(),
+        name: "Barricade",
+        elementType: "custom",
+        width: blockLen,
+        height: BARRICADE_THICKNESS,
+        xPosition: startX + offset,
+        yPosition: sideY,
+        rotationAngle: angle,
+        color: BARRICADE_COLOR,
+        status: "planned",
+        height3d: BARRICADE_HEIGHT_3D,
+        shape: "rectangle",
+      });
+      offset += BARRICADE_STEP;
+    }
+  }
+
+  // Place barricades for horizontal Roads (top + bottom edges)
+  const horizontalRoads = allElements.filter(
+    (el) => el.name === "Road" && el.rotationAngle === 0,
+  );
+  for (const road of horizontalRoads) {
+    // Top side (just above the road)
+    placeBarricadeRow(
+      road.xPosition,
+      road.width,
+      road.yPosition - BARRICADE_THICKNESS,
+      0,
+    );
+    // Bottom side (just below the road)
+    placeBarricadeRow(
+      road.xPosition,
+      road.width,
+      road.yPosition + road.height,
+      0,
+    );
+  }
+
+  // Place barricades for Road-Boundary (rotated, along each polygon edge)
+  const boundaryRoads = allElements.filter((el) => el.name === "Road-Boundary");
+  for (const road of boundaryRoads) {
+    const angleRad = (road.rotationAngle * Math.PI) / 180;
+    const edgeLen = road.width; // width = edge length before rotation
+    const roadH = road.height; // = ROAD_WIDTH = 10
+
+    // The road is centered on the edge midpoint: center = (xPosition + width/2, yPosition + height/2)
+    const cx = road.xPosition + edgeLen / 2;
+    const cy = road.yPosition + roadH / 2;
+
+    // Perpendicular direction (outward from road on both sides)
+    // Road runs along angle, perpendicular is angle + 90°
+    const perpX = -Math.sin(angleRad);
+    const perpY = Math.cos(angleRad);
+
+    // Offset for the barricade row: half road height + 0 gap (flush outside)
+    const offset = roadH / 2 + 0; // no extra gap, flush outside
+
+    // For both sides (+perp and -perp)
+    for (const sign of [-1, 1]) {
+      // Center of barricade row
+      const rowCx = cx + sign * offset * perpX;
+      const rowCy = cy + sign * offset * perpY;
+
+      // Place individual blocks along the row
+      let blockOffset = 0;
+      while (blockOffset + BARRICADE_LENGTH <= edgeLen + 0.01) {
+        const blockLen = Math.min(BARRICADE_LENGTH, edgeLen - blockOffset);
+        if (blockLen < 0.5) break;
+
+        // Block center along the row
+        const blockCenterLocal = blockOffset + blockLen / 2 - edgeLen / 2;
+        // Block top-left in local (unrotated) coordinates relative to row center
+        const localX = blockCenterLocal - blockLen / 2;
+        const localY = -BARRICADE_THICKNESS / 2;
+
+        // Rotate local offset by road angle
+        const rotatedX =
+          localX * Math.cos(angleRad) - localY * Math.sin(angleRad);
+        const rotatedY =
+          localX * Math.sin(angleRad) + localY * Math.cos(angleRad);
+
+        allElements.push({
+          id: makeId(),
+          name: "Barricade",
+          elementType: "custom",
+          width: blockLen,
+          height: BARRICADE_THICKNESS,
+          xPosition: rowCx + rotatedX,
+          yPosition: rowCy + rotatedY,
+          rotationAngle: road.rotationAngle,
+          color: BARRICADE_COLOR,
+          status: "planned",
+          height3d: BARRICADE_HEIGHT_3D,
+          shape: "rectangle",
+        });
+        blockOffset += BARRICADE_STEP;
+      }
+    }
+  }
+
   return allElements;
 }
 
