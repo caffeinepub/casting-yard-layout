@@ -1,11 +1,14 @@
 import { Button } from "@/components/ui/button";
 import {
   Calendar,
+  ChevronDown,
   FileUp,
   FolderOpen,
   Grid3X3,
   Layers,
+  Pencil,
   PlusCircle,
+  Ruler,
   Trash2,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -18,6 +21,7 @@ interface DashboardProps {
   projects: SavedProject[];
   onCreateNew: () => void;
   onCreateNewWithConfig: (config: NewYardConfig) => void;
+  onDrawBoundary: () => void;
   onOpenProject: (project: SavedProject) => void;
   onDeleteProject: (id: string) => void;
   onOpenSample: (url: string, name: string) => void;
@@ -39,12 +43,14 @@ function formatDate(iso: string): string {
 export function Dashboard({
   projects,
   onCreateNewWithConfig,
+  onDrawBoundary,
   onOpenProject,
   onDeleteProject,
   onOpenSample,
 }: DashboardProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
   function handleLoadFile() {
     fileInputRef.current?.click();
@@ -157,15 +163,96 @@ export function Dashboard({
               Load from File
             </button>
 
-            <Button
-              onClick={openWizard}
-              className="flex items-center gap-2 text-sm font-bold px-5 py-2"
-              style={{ backgroundColor: "#1E7ACB", color: "white" }}
-              data-ocid="dashboard.create_new.primary_button"
+            <div
+              className="relative"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node))
+                  setCreateMenuOpen(false);
+              }}
             >
-              <PlusCircle className="h-4 w-4" />
-              Create New
-            </Button>
+              <div
+                className="flex"
+                style={{ borderRadius: "0.375rem", overflow: "hidden" }}
+              >
+                <Button
+                  onClick={openWizard}
+                  className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-r-none border-r"
+                  style={{
+                    backgroundColor: "#1E7ACB",
+                    color: "white",
+                    borderColor: "#1565a8",
+                  }}
+                  data-ocid="dashboard.create_new.primary_button"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  Create New
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setCreateMenuOpen((v) => !v)}
+                  className="flex items-center justify-center px-2 py-2 text-white rounded-l-none"
+                  style={{ backgroundColor: "#1565a8" }}
+                  data-ocid="dashboard.create_new.dropdown_button"
+                  aria-label="More create options"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </button>
+              </div>
+              {createMenuOpen && (
+                <div
+                  className="absolute right-0 mt-1 w-52 rounded-lg shadow-xl overflow-hidden z-50 border"
+                  style={{
+                    backgroundColor: "oklch(0.22 0.028 220)",
+                    borderColor: "oklch(0.3 0.025 220)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateMenuOpen(false);
+                      openWizard();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors text-left"
+                  >
+                    <Ruler
+                      className="h-4 w-4 shrink-0"
+                      style={{ color: "#1E7ACB" }}
+                    />
+                    <div>
+                      <p className="font-semibold">Use Dimensions</p>
+                      <p className="text-xs opacity-60">
+                        Enter yard size numerically
+                      </p>
+                    </div>
+                  </button>
+                  <div
+                    style={{
+                      height: "1px",
+                      backgroundColor: "oklch(0.3 0.025 220)",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateMenuOpen(false);
+                      onDrawBoundary();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-white hover:bg-white/10 transition-colors text-left"
+                  >
+                    <Pencil
+                      className="h-4 w-4 shrink-0"
+                      style={{ color: "#22c55e" }}
+                    />
+                    <div>
+                      <p className="font-semibold">Draw Boundary</p>
+                      <p className="text-xs opacity-60">
+                        Draw the yard shape on canvas
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </motion.div>
 
@@ -372,15 +459,37 @@ export function Dashboard({
                 <FileUp className="h-4 w-4" />
                 Load from File
               </button>
-              <Button
-                onClick={openWizard}
-                className="flex items-center gap-2 text-sm font-bold px-5 py-2"
-                style={{ backgroundColor: "#1E7ACB", color: "white" }}
-                data-ocid="dashboard.empty_create_new.primary_button"
+              <div
+                className="flex"
+                style={{ borderRadius: "0.375rem", overflow: "hidden" }}
               >
-                <PlusCircle className="h-4 w-4" />
-                Create New
-              </Button>
+                <Button
+                  onClick={openWizard}
+                  className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-r-none border-r"
+                  style={{
+                    backgroundColor: "#1E7ACB",
+                    color: "white",
+                    borderColor: "#1565a8",
+                  }}
+                  data-ocid="dashboard.empty_create_new.primary_button"
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  Create New
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDrawBoundary();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 text-white text-xs rounded-l-none"
+                  style={{ backgroundColor: "#1565a8" }}
+                  data-ocid="dashboard.empty_draw_boundary.button"
+                  title="Draw Boundary"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Draw
+                </button>
+              </div>
             </div>
           </motion.div>
         ) : (

@@ -9,6 +9,7 @@ import { LeftSidebar } from "./components/LeftSidebar";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { SettingsPage } from "./components/SettingsPage";
 import { Toolbar } from "./components/Toolbar";
+import { YardBoundaryDrawer } from "./components/YardBoundaryDrawer";
 import { useProjects } from "./hooks/useProjects";
 import { useSaveProject } from "./hooks/useQueries";
 import type { SavedProject } from "./types/project";
@@ -27,7 +28,7 @@ import {
 } from "./types/yard";
 import type { SpacingSettings } from "./types/yard";
 import { buildAutoLayoutElements } from "./utils/autoLayout";
-import type { NewYardConfig } from "./utils/autoLayout";
+import type { BoundaryPoint, NewYardConfig } from "./utils/autoLayout";
 
 let nextId = BigInt(100);
 function genId(): bigint {
@@ -46,9 +47,10 @@ interface HistorySnapshot {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState<"dashboard" | "editor" | "settings">(
-    "dashboard",
-  );
+  const [screen, setScreen] = useState<
+    "dashboard" | "editor" | "settings" | "boundaryDrawing"
+  >("dashboard");
+  const [boundaryPoints, setBoundaryPoints] = useState<BoundaryPoint[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
   const [elements, setElements] = useState<YardElement[]>([]);
@@ -536,11 +538,20 @@ export default function App() {
       projectName,
       yardLength,
       yardWidth,
+      boundaryPoints,
       libraryItems,
       elements: elements.map((el) => ({ ...el, id: el.id.toString() })),
       textLabels: textLabels.map((l) => ({ ...l, id: l.id.toString() })),
     };
-  }, [projectName, yardLength, yardWidth, libraryItems, elements, textLabels]);
+  }, [
+    projectName,
+    yardLength,
+    yardWidth,
+    boundaryPoints,
+    libraryItems,
+    elements,
+    textLabels,
+  ]);
 
   const handleSaveFile = useCallback(() => {
     const data = buildSaveData();
@@ -607,6 +618,11 @@ export default function App() {
         setTextLabels(
           data.textLabels.map((l: any) => ({ ...l, id: BigInt(l.id) })),
         );
+      }
+      if (data.boundaryPoints) {
+        setBoundaryPoints(data.boundaryPoints);
+      } else {
+        setBoundaryPoints([]);
       }
       setSelectedIds(new Set());
       return true;
@@ -678,6 +694,7 @@ export default function App() {
     setProjectName("New Casting Yard");
     setYardLength(config.yardLength);
     setYardWidth(config.yardWidth);
+    setBoundaryPoints(config.boundaryPoints ?? []);
     setActiveProjectId(null);
     lastPlacedRef.current = null;
     undoStack.current = [];
@@ -732,6 +749,10 @@ export default function App() {
     },
     [loadFromRaw],
   );
+
+  const handleDrawBoundary = useCallback(() => {
+    setScreen("boundaryDrawing");
+  }, []);
 
   const handleGoToDashboard = useCallback(() => {
     setScreen("dashboard");
@@ -888,6 +909,7 @@ export default function App() {
           projects={projects}
           onCreateNew={handleCreateNew}
           onCreateNewWithConfig={handleCreateNewWithConfig}
+          onDrawBoundary={handleDrawBoundary}
           onOpenProject={handleOpenProject}
           onDeleteProject={deleteProject}
           onOpenSample={handleOpenSampleProject}
@@ -922,6 +944,20 @@ export default function App() {
           onBack={() => setScreen("editor")}
         />
       </div>
+    );
+  }
+
+  if (screen === "boundaryDrawing") {
+    return (
+      <>
+        <Toaster />
+        <YardBoundaryDrawer
+          onConfirm={(config) => {
+            handleCreateNewWithConfig(config);
+          }}
+          onCancel={() => setScreen("dashboard")}
+        />
+      </>
     );
   }
 
@@ -1019,6 +1055,7 @@ export default function App() {
             onUpdateTextLabel={handleUpdateTextLabel}
             onDeleteTextLabel={handleDeleteTextLabel}
             onMoveStart={handleMoveStart}
+            boundaryPoints={boundaryPoints}
           />
         ) : (
           <Canvas3D

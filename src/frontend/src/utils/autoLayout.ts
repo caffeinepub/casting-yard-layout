@@ -1,12 +1,18 @@
 import type { SpacingSettings, YardElement } from "../types/yard";
 import { DEFAULT_SPACING_SETTINGS } from "../types/yard";
 
+export interface BoundaryPoint {
+  x: number;
+  y: number;
+}
+
 export interface NewYardConfig {
   yardLength: number;
   yardWidth: number;
   bayCount: number;
   bayLength: number;
   bayWidth: number;
+  boundaryPoints?: BoundaryPoint[];
 }
 
 const ROAD_IMAGE =

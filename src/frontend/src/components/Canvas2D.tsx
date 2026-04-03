@@ -7,6 +7,7 @@ import type {
   ToolMode,
   YardElement,
 } from "../types/yard";
+import type { BoundaryPoint } from "../utils/autoLayout";
 
 interface Canvas2DProps {
   elements: YardElement[];
@@ -25,6 +26,7 @@ interface Canvas2DProps {
   onUpdateTextLabel: (id: bigint, changes: Partial<TextLabel>) => void;
   onDeleteTextLabel: (id: bigint) => void;
   onMoveStart: () => void;
+  boundaryPoints?: BoundaryPoint[];
 }
 
 const SCALE_PX_PER_M: Record<ScaleOption, number> = {
@@ -203,6 +205,7 @@ export function Canvas2D({
   onUpdateTextLabel,
   onDeleteTextLabel,
   onMoveStart,
+  boundaryPoints = [],
 }: Canvas2DProps) {
   const pxPerM = SCALE_PX_PER_M[scale];
   const yardLengthPx = yardLength * pxPerM;
@@ -786,6 +789,58 @@ export function Canvas2D({
 
           {gridLines}
           {scaleMarkers}
+
+          {/* Yard boundary polygon overlay */}
+          {boundaryPoints.length >= 3 &&
+            (() => {
+              const pts = boundaryPoints
+                .map((p) => `${p.x * pxPerM + MARGIN},${p.y * pxPerM + MARGIN}`)
+                .join(" ");
+              return (
+                <g key="yard-boundary">
+                  {/* Semi-transparent fill to show boundary area */}
+                  <polygon
+                    points={pts}
+                    fill="rgba(34,197,94,0.06)"
+                    stroke="#22c55e"
+                    strokeWidth={2}
+                    strokeDasharray="10 5"
+                    pointerEvents="none"
+                  />
+                  {/* Corner dots */}
+                  {boundaryPoints.map((p, _i) => (
+                    <circle
+                      key={`bp-${p.x}-${p.y}`}
+                      cx={p.x * pxPerM + MARGIN}
+                      cy={p.y * pxPerM + MARGIN}
+                      r={3}
+                      fill="#22c55e"
+                      opacity={0.7}
+                      pointerEvents="none"
+                    />
+                  ))}
+                  {/* "Yard Boundary" label at top-left of bounding box */}
+                  {(() => {
+                    const minX = Math.min(...boundaryPoints.map((p) => p.x));
+                    const minY = Math.min(...boundaryPoints.map((p) => p.y));
+                    return (
+                      <text
+                        x={minX * pxPerM + MARGIN + 4}
+                        y={minY * pxPerM + MARGIN - 5}
+                        fontSize={10}
+                        fill="#22c55e"
+                        fontFamily="monospace"
+                        fontWeight="bold"
+                        opacity={0.8}
+                        pointerEvents="none"
+                      >
+                        Yard Boundary
+                      </text>
+                    );
+                  })()}
+                </g>
+              );
+            })()}
 
           {/* Elements */}
           {elements.map((el) => {
