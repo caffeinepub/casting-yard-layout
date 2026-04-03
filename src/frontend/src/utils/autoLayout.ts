@@ -199,11 +199,60 @@ export function buildAutoLayoutElements(
 
   // ── Determine bay vertical stacking layout ──
   const totalHeight = bayCount * bayWidth + (bayCount - 1) * spacing;
-  const startY = safeMinY + Math.max(0, (safeHeight - totalHeight) / 2);
-  const clampedStartY = Math.max(
-    safeMinY,
-    Math.min(startY, safeMaxY - totalHeight),
-  );
+
+  // When a polygon boundary is present, scan all valid Y start positions and
+  // pick the one that maximises the TOTAL horizontal span across all bays.
+  // This ensures bays are placed where the polygon is widest (upper or lower
+  // part of the yard), not always at the centre.
+  let clampedStartY: number;
+
+  if (
+    boundaryPoints &&
+    boundaryPoints.length >= 3 &&
+    totalHeight <= safeHeight
+  ) {
+    const SCAN_STEP = 1; // 1m resolution
+    let bestY = safeMinY;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (
+      let candidateY = safeMinY;
+      candidateY <= safeMaxY - totalHeight;
+      candidateY += SCAN_STEP
+    ) {
+      let totalSpan = 0;
+      let valid = true;
+
+      for (let b = 0; b < bayCount; b++) {
+        const bayTop = candidateY + b * (bayWidth + spacing);
+        const extent = getHorizontalExtentForRect(
+          boundaryPoints,
+          bayTop,
+          bayWidth,
+          INSET,
+        );
+        if (!extent) {
+          valid = false;
+          break;
+        }
+        totalSpan += extent.right - extent.left;
+      }
+
+      if (valid && totalSpan > bestScore) {
+        bestScore = totalSpan;
+        bestY = candidateY;
+      }
+    }
+
+    clampedStartY = bestY;
+  } else {
+    // No polygon (dimension mode): centre the bays vertically
+    const startY = safeMinY + Math.max(0, (safeHeight - totalHeight) / 2);
+    clampedStartY = Math.max(
+      safeMinY,
+      Math.min(startY, safeMaxY - totalHeight),
+    );
+  }
 
   const allElements: YardElement[] = [];
   let idSeq = 0;
