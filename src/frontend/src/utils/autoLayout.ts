@@ -52,6 +52,22 @@ export function sectionCount(
 }
 
 /**
+ * Get bounding box of a polygon.
+ */
+function getBoundingBox(points: BoundaryPoint[]) {
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  return {
+    minX: Math.min(...xs),
+    minY: Math.min(...ys),
+    maxX: Math.max(...xs),
+    maxY: Math.max(...ys),
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+/**
  * Build all YardElement[] for an auto-layout from config.
  * Returns a flat array ready to be passed to onAddRawElements.
  */
@@ -59,13 +75,53 @@ export function buildAutoLayoutElements(
   config: NewYardConfig,
   spacingSettings: SpacingSettings = DEFAULT_SPACING_SETTINGS,
 ): YardElement[] {
-  const { yardLength, yardWidth, bayCount, bayLength, bayWidth } = config;
+  const { yardLength, yardWidth, bayCount, bayWidth, boundaryPoints } = config;
   const spacing = spacingSettings.bayVerticalSpacing;
+
+  // ── Determine safe area for bay placement ──
+  // If a custom boundary polygon was drawn, use its bounding box (with a 2m inset)
+  // so bay corners never exceed the boundary from any direction.
+  let safeMinX: number;
+  let safeMinY: number;
+  let safeMaxX: number;
+  let safeMaxY: number;
+  const INSET = 2; // metres of clearance from boundary edges
+
+  if (boundaryPoints && boundaryPoints.length >= 3) {
+    const bb = getBoundingBox(boundaryPoints);
+    safeMinX = bb.minX + INSET;
+    safeMinY = bb.minY + INSET;
+    safeMaxX = bb.maxX - INSET;
+    safeMaxY = bb.maxY - INSET;
+  } else {
+    safeMinX = 0;
+    safeMinY = 0;
+    safeMaxX = yardLength;
+    safeMaxY = yardWidth;
+  }
+
+  const safeWidth = safeMaxX - safeMinX; // available horizontal space
+  const safeHeight = safeMaxY - safeMinY; // available vertical space
+
+  // Bay length must not exceed the safe width
+  const bayLength = Math.min(config.bayLength, safeWidth);
 
   // ── Bay layout geometry ──
   const totalHeight = bayCount * bayWidth + (bayCount - 1) * spacing;
-  const startX = Math.max(0, (yardLength - bayLength) / 2);
-  const startY = Math.max(0, (yardWidth - totalHeight) / 2);
+
+  // Center bays within the safe area
+  const startX = safeMinX + Math.max(0, (safeWidth - bayLength) / 2);
+  const startY = safeMinY + Math.max(0, (safeHeight - totalHeight) / 2);
+
+  // Clamp so no edge ever leaves the safe zone
+  const clampedStartX = Math.max(
+    safeMinX,
+    Math.min(startX, safeMaxX - bayLength),
+  );
+  const clampedStartY = Math.max(
+    safeMinY,
+    Math.min(startY, safeMaxY - totalHeight),
+  );
 
   const allElements: YardElement[] = [];
   let idSeq = 0;
@@ -77,7 +133,7 @@ export function buildAutoLayoutElements(
 
   // ── 1. Build Bays + between-bay roads ──
   const bayRefs: YardElement[] = [];
-  let curY = startY;
+  let curY = clampedStartY;
 
   for (let i = 0; i < bayCount; i++) {
     const bay: YardElement = {
@@ -86,7 +142,7 @@ export function buildAutoLayoutElements(
       elementType: "custom",
       width: bayLength,
       height: bayWidth,
-      xPosition: startX,
+      xPosition: clampedStartX,
       yPosition: curY,
       rotationAngle: 0,
       color: "#1a6b2a",
@@ -106,7 +162,7 @@ export function buildAutoLayoutElements(
         elementType: "custom",
         width: bayLength,
         height: ROAD_WIDTH,
-        xPosition: startX,
+        xPosition: clampedStartX,
         yPosition: roadY,
         rotationAngle: 0,
         color: "#888888",
@@ -120,14 +176,14 @@ export function buildAutoLayoutElements(
   }
 
   // Top road (0.5m above first bay)
-  const topBayY = startY;
+  const topBayY = clampedStartY;
   allElements.unshift({
     id: makeId(),
     name: "Road",
     elementType: "custom",
     width: bayLength,
     height: ROAD_WIDTH,
-    xPosition: startX,
+    xPosition: clampedStartX,
     yPosition: topBayY - ROAD_WIDTH - 0.5,
     rotationAngle: 0,
     color: "#888888",
@@ -138,14 +194,14 @@ export function buildAutoLayoutElements(
   });
 
   // Bottom road (0.5m below last bay)
-  const lastBayEndY = startY + totalHeight;
+  const lastBayEndY = clampedStartY + totalHeight;
   allElements.push({
     id: makeId(),
     name: "Road",
     elementType: "custom",
     width: bayLength,
     height: ROAD_WIDTH,
-    xPosition: startX,
+    xPosition: clampedStartX,
     yPosition: lastBayEndY + 0.5,
     rotationAngle: 0,
     color: "#888888",
@@ -166,7 +222,7 @@ export function buildAutoLayoutElements(
     elementType: "custom",
     width: ROAD_WIDTH,
     height: vertRoadHeight,
-    xPosition: startX - ROAD_WIDTH,
+    xPosition: clampedStartX - ROAD_WIDTH,
     yPosition: topRoadTop,
     rotationAngle: 0,
     color: "#888888",
@@ -182,7 +238,7 @@ export function buildAutoLayoutElements(
     elementType: "custom",
     width: ROAD_WIDTH,
     height: vertRoadHeight,
-    xPosition: startX + bayLength,
+    xPosition: clampedStartX + bayLength,
     yPosition: topRoadTop,
     rotationAngle: 0,
     color: "#888888",
