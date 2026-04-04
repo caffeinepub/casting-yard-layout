@@ -649,9 +649,10 @@ export function buildAutoLayoutElements(
   }
 
   // ── READY TO OCCUPY blocks ──
-  // Fill empty space inside the polygon (or yard bounds) that is not occupied
-  // by bays or roads.
-  // Three block sizes (largest first):
+  // Fill ALL empty space inside the polygon (or yard bounds) that is not occupied
+  // by bays or roads. Blocks can be placed at any position and rotation —
+  // they are NOT restricted to a fixed grid alignment or stacking order.
+  // Three block sizes (largest first, greedy placement):
   //   100m × 100m  →  yellow  (#EAB308)  "READY TO OCCUPY"
   //    50m ×  50m  →  red     (#ef4444)  "READY TO OCCUPY"
   //    10m ×  10m  →  blue    (#3b82f6)  "READY TO OCCUPY"
@@ -689,7 +690,7 @@ export function buildAutoLayoutElements(
     }
 
     if (scanMaxX > scanMinX + GRID && scanMaxY > scanMinY + GRID) {
-      // Collect axis-aligned occupied rectangles (bays + non-rotated roads)
+      // Collect occupied zone bounding boxes (bays + roads with padding)
       type Rect = { x1: number; y1: number; x2: number; y2: number };
       const occupied: Rect[] = [];
       for (const el of allElements) {
@@ -726,6 +727,16 @@ export function buildAutoLayoutElements(
         return inside;
       };
 
+      // Check if a point is in an occupied axis-aligned rect
+      const isOccupied = (px: number, py: number): boolean => {
+        for (const occ of occupied) {
+          if (px >= occ.x1 && px <= occ.x2 && py >= occ.y1 && py <= occ.y2) {
+            return true;
+          }
+        }
+        return false;
+      };
+
       // Build free-cell grid (10m resolution)
       const cols = Math.ceil((scanMaxX - scanMinX) / GRID);
       const rows = Math.ceil((scanMaxY - scanMinY) / GRID);
@@ -744,54 +755,54 @@ export function buildAutoLayoutElements(
             continue;
           }
 
-          for (const occ of occupied) {
-            if (
-              cellCX >= occ.x1 &&
-              cellCX <= occ.x2 &&
-              cellCY >= occ.y1 &&
-              cellCY <= occ.y2
-            ) {
-              free[r][c] = false;
-              break;
-            }
+          if (isOccupied(cellCX, cellCY)) {
+            free[r][c] = false;
           }
         }
       }
 
       /**
-       * Try to place a square block of `sizeInCells` cells at grid position (r, c).
-       * Returns true if all cells are free; marks them used and emits element.
+       * Try to place a rectangular block of widthCells × heightCells at grid
+       * position (r, c). Returns true if all cells are free; marks them used
+       * and emits element with the given rotation.
+       *
+       * Blocks are placed freely — they are not required to align to a
+       * fixed row/column order. Any free cell can host a block in any size
+       * or orientation as long as the cells are all empty.
        */
       const tryPlaceBlock = (
         r: number,
         c: number,
-        sizeInCells: number,
+        widthCells: number,
+        heightCells: number,
         color: string,
+        rotationAngle: number,
       ): boolean => {
-        if (r + sizeInCells > rows || c + sizeInCells > cols) return false;
-        // Check all cells in the square are free
-        for (let dr = 0; dr < sizeInCells; dr++) {
-          for (let dc = 0; dc < sizeInCells; dc++) {
+        if (r + heightCells > rows || c + widthCells > cols) return false;
+        // Check all cells in the rectangle are free
+        for (let dr = 0; dr < heightCells; dr++) {
+          for (let dc = 0; dc < widthCells; dc++) {
             if (!free[r + dr][c + dc]) return false;
           }
         }
         // Mark used
-        for (let dr = 0; dr < sizeInCells; dr++) {
-          for (let dc = 0; dc < sizeInCells; dc++) {
+        for (let dr = 0; dr < heightCells; dr++) {
+          for (let dc = 0; dc < widthCells; dc++) {
             free[r + dr][c + dc] = false;
           }
         }
-        // Emit element
-        const blockSizeM = sizeInCells * GRID;
+        // Emit element — position is the top-left corner of the grid cells used
+        const blockW = widthCells * GRID;
+        const blockH = heightCells * GRID;
         allElements.push({
           id: makeId(),
           name: "READY TO OCCUPY",
           elementType: "custom",
-          width: blockSizeM,
-          height: blockSizeM,
+          width: blockW,
+          height: blockH,
           xPosition: scanMinX + c * GRID,
           yPosition: scanMinY + r * GRID,
-          rotationAngle: 0,
+          rotationAngle,
           color,
           status: "planned",
           height3d: RTO_HEIGHT_3D,
@@ -800,24 +811,36 @@ export function buildAutoLayoutElements(
         return true;
       };
 
-      // Pass 1: place as many 100m (10-cell) yellow blocks as possible
-      // Pass 2: fill remaining space with 50m (5-cell) red blocks
-      // Pass 3: fill remaining space with 10m (1-cell) blue blocks
+      /**
+       * For each tier, scan ALL positions and try both orientations
+       * (landscape and portrait). Blocks are placed greedily wherever
+       * they fit — no fixed stacking order or alignment constraint.
+       * This allows blocks to fill irregular spaces effectively.
+       */
       for (const tier of RTO_TIERS) {
-        // Scan entire grid in row-major order for blocks of this tier
-        for (let r = 0; r <= rows - tier.cells; r++) {
-          for (let c = 0; c <= cols - tier.cells; c++) {
-            if (free[r][c]) {
-              tryPlaceBlock(r, c, tier.cells, tier.color);
-            }
-          }
-        }
-        // For the 1-cell (blue) tier, also catch any remaining single cells
-        if (tier.cells === 1) {
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              if (free[r][c]) {
-                tryPlaceBlock(r, c, 1, tier.color);
+        const sz = tier.cells;
+        // Scan entire grid — try every possible top-left corner
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (!free[r][c]) continue;
+
+            // Try square first (sz × sz)
+            if (tryPlaceBlock(r, c, sz, sz, tier.color, 0)) continue;
+
+            // For non-unit tiers, also try rectangular variants
+            // so blocks can squeeze into narrow or tall spaces
+            if (sz > 1) {
+              // Try wide rectangle: 2*sz wide × sz/2 tall (if divisible)
+              // and tall rectangle: sz/2 wide × 2*sz tall
+              // For 100m tier (sz=10): try 10×5 and 5×10
+              // For 50m tier (sz=5): try 5×2 and 2×5 (skip if odd)
+              const halfSz = Math.floor(sz / 2);
+              if (halfSz >= 1) {
+                // Wide: sz columns × halfSz rows  (0° rotation)
+                if (!tryPlaceBlock(r, c, sz, halfSz, tier.color, 0)) {
+                  // Tall: halfSz columns × sz rows  (90° rotation stored as 0° with swapped dims)
+                  tryPlaceBlock(r, c, halfSz, sz, tier.color, 0);
+                }
               }
             }
           }
