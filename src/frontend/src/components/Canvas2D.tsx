@@ -1107,9 +1107,9 @@ export function Canvas2D({
                       y={ey}
                       width={ew}
                       height={eh}
-                      fill="#ef4444"
+                      fill={el.color}
                       opacity={0.45}
-                      stroke="#dc2626"
+                      stroke={el.color}
                       strokeWidth={1.5}
                       strokeDasharray="6 3"
                     />
