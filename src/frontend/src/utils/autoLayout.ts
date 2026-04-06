@@ -24,6 +24,9 @@ const SHED_IMAGE =
 
 const ROAD_WIDTH = 10;
 
+// Horizontal spacing between vertical roads in empty zones (top/bottom spaces)
+const VERTICAL_ROAD_INTERVAL = 110;
+
 /**
  * Calculate how many items fit within a section:
  * - Fill vertically (full bay height), then add columns up to 30% of bay length.
@@ -394,6 +397,11 @@ export function buildAutoLayoutElements(
   const firstExt = bayExtents[0];
   const lastExt = bayExtents[bayCount - 1];
 
+  // Extract named Y-position variables so they can be reused for vertical road zones
+  const topRoadY = firstExt.bayY - ROAD_WIDTH - 0.5;
+  const lastBayEndY = lastExt.bayY + bayWidth;
+  const bottomRoadY = lastBayEndY + 0.5;
+
   allElements.unshift({
     id: makeId(),
     name: "Road",
@@ -401,7 +409,7 @@ export function buildAutoLayoutElements(
     width: firstExt.bayLength,
     height: ROAD_WIDTH,
     xPosition: firstExt.startX,
-    yPosition: firstExt.bayY - ROAD_WIDTH - 0.5,
+    yPosition: topRoadY,
     rotationAngle: 0,
     color: "#888888",
     status: "planned",
@@ -411,7 +419,6 @@ export function buildAutoLayoutElements(
   });
 
   // ── Bottom road (0.5m below last bay) ──
-  const lastBayEndY = lastExt.bayY + bayWidth;
   allElements.push({
     id: makeId(),
     name: "Road",
@@ -419,7 +426,7 @@ export function buildAutoLayoutElements(
     width: lastExt.bayLength,
     height: ROAD_WIDTH,
     xPosition: lastExt.startX,
-    yPosition: lastBayEndY + 0.5,
+    yPosition: bottomRoadY,
     rotationAngle: 0,
     color: "#888888",
     status: "planned",
@@ -427,6 +434,148 @@ export function buildAutoLayoutElements(
     shape: "rectangle",
     imageUrl: ROAD_IMAGE,
   });
+
+  // ── Vertical roads in top and bottom empty zones ──
+  //
+  // LOGIC:
+  //   - TOP ZONE: from polygon top (or yard top) up to the top edge of the top road.
+  //     The horizontal extent of the zone is determined by scanning the polygon.
+  //     Roads start at the bay's left horizontal edge and extend leftward AND
+  //     rightward, placed every 110m from the nearest horizontal point of the bay.
+  //
+  //     Specifically: the reference point is the nearest horizontal edge of the
+  //     bay group. For the top zone we use the LEFT edge of the leftmost bay
+  //     (firstExt.startX) as the first reference anchor. Then:
+  //       - Going RIGHT: first road at anchor + 110m, then + 110m, ...
+  //       - Going LEFT: first road at anchor - 110m, then - 110m, ...
+  //     This ensures 110m spacing is measured from the bay edge outward in
+  //     both directions (toward the right end and the left end of the zone).
+  //
+  //   - BOTTOM ZONE: same logic using the same bay left edge as anchor.
+  //
+  //   - Each vertical road spans the full height of its zone.
+  //   - Road width = 10m (ROAD_WIDTH), rendered as a 90°-rotated element.
+  {
+    let zoneTopMin: number;
+    let zoneBottomMax: number;
+
+    if (boundaryPoints && boundaryPoints.length >= 3) {
+      const bb = getBoundingBox(boundaryPoints);
+      zoneTopMin = bb.minY + INSET;
+      zoneBottomMax = bb.maxY - INSET;
+    } else {
+      zoneTopMin = 0;
+      zoneBottomMax = yardWidth;
+    }
+
+    // Compute the overall bay horizontal extent (union of all bay left/right edges).
+    // This is used as the reference anchor for 110m spacing in both zones.
+    const bayGroupLeftX = Math.min(...bayExtents.map((e) => e.startX));
+
+    /**
+     * Place vertical roads within a zone [zoneTop, zoneBottom].
+     *
+     * Roads span the full height of the zone and are 10m wide.
+     * Placement starts from the nearest bay horizontal edge
+     * 110m in each direction.
+     *
+     * In practice we calculate all candidate X positions (going right from
+     * bayGroupLeftX and going left from bayGroupLeftX), then filter to those
+     * that fall within [leftEdge, rightEdge] of the zone.
+     */
+    const placeVerticalRoadsInZone = (
+      zoneTop: number,
+      zoneBottom: number,
+    ): void => {
+      const zoneHeight = zoneBottom - zoneTop;
+      // Skip if too thin to hold even one road width
+      if (zoneHeight < ROAD_WIDTH) return;
+
+      // Determine horizontal extent of this zone
+      let leftEdge: number;
+      let rightEdge: number;
+
+      if (boundaryPoints && boundaryPoints.length >= 3) {
+        const extent = getHorizontalExtentForRect(
+          boundaryPoints,
+          zoneTop,
+          zoneHeight,
+          INSET,
+        );
+        if (!extent) return;
+        leftEdge = extent.left;
+        rightEdge = extent.right;
+      } else {
+        leftEdge = 0;
+        rightEdge = yardLength;
+      }
+
+      const zoneWidth = rightEdge - leftEdge;
+      if (zoneWidth < ROAD_WIDTH) return;
+
+      // Collect all road center X positions.
+      // Anchor is bayGroupLeftX (left edge of the leftmost bay).
+      // Step rightward: anchor + 110, anchor + 220, ...
+      // Step leftward:  anchor - 110, anchor - 220, ...
+      // Include any position whose road strip [cx - 5, cx + 5] fits in the zone.
+      const roadCenters: number[] = [];
+
+      // Rightward from bay left edge (includes the bay extent and beyond)
+      for (
+        let cx = bayGroupLeftX + VERTICAL_ROAD_INTERVAL;
+        cx - ROAD_WIDTH / 2 < rightEdge;
+        cx += VERTICAL_ROAD_INTERVAL
+      ) {
+        if (
+          cx + ROAD_WIDTH / 2 <= rightEdge &&
+          cx - ROAD_WIDTH / 2 >= leftEdge
+        ) {
+          roadCenters.push(cx);
+        }
+      }
+
+      // Leftward from bay left edge
+      for (
+        let cx = bayGroupLeftX - VERTICAL_ROAD_INTERVAL;
+        cx + ROAD_WIDTH / 2 > leftEdge;
+        cx -= VERTICAL_ROAD_INTERVAL
+      ) {
+        if (
+          cx + ROAD_WIDTH / 2 <= rightEdge &&
+          cx - ROAD_WIDTH / 2 >= leftEdge
+        ) {
+          roadCenters.push(cx);
+        }
+      }
+
+      // Sort left-to-right and deduplicate
+      roadCenters.sort((a, b) => a - b);
+
+      for (const cx of roadCenters) {
+        allElements.push({
+          id: makeId(),
+          name: "Road-Vertical",
+          elementType: "custom",
+          width: zoneHeight,
+          height: ROAD_WIDTH,
+          xPosition: cx - ROAD_WIDTH / 2,
+          yPosition: zoneTop,
+          rotationAngle: 90,
+          color: "#888888",
+          status: "planned",
+          height3d: 0.1,
+          shape: "rectangle",
+          imageUrl: ROAD_IMAGE,
+        });
+      }
+    };
+
+    // TOP SPACE: from zone top down to the top edge of the top road
+    placeVerticalRoadsInZone(zoneTopMin, topRoadY);
+
+    // BOTTOM SPACE: from bottom edge of bottom road down to zone bottom
+    placeVerticalRoadsInZone(bottomRoadY + ROAD_WIDTH, zoneBottomMax);
+  }
 
   // ── Polygon boundary roads ──
   // When a polygon boundary is drawn, place 10m-wide road segments along each edge,
@@ -697,7 +846,8 @@ export function buildAutoLayoutElements(
         if (
           el.name === "Bay" ||
           el.name === "Road" ||
-          el.name === "Road-Boundary"
+          el.name === "Road-Boundary" ||
+          el.name === "Road-Vertical"
         ) {
           const pad = 1;
           occupied.push({
@@ -849,6 +999,29 @@ export function buildAutoLayoutElements(
     }
   }
 
+  // Sort elements by render priority: roads/barricades first, then bays,
+  // then bay sub-elements, then READY TO OCCUPY yellow/red/blue last.
+  const priority = (el: YardElement): number => {
+    if (
+      ["Road", "Road-Boundary", "Road-Vertical", "Barricade"].includes(el.name)
+    )
+      return 0;
+    if (el.name === "Bay") return 1;
+    if (
+      [
+        "I-Girder",
+        "Box-I-Girder-Formwork",
+        "Factory-Shed",
+        "Reinforcement-Cage",
+      ].includes(el.name)
+    )
+      return 2;
+    if (el.name === "READY TO OCCUPY" && el.color === "#EAB308") return 3;
+    if (el.name === "READY TO OCCUPY" && el.color === "#ef4444") return 4;
+    if (el.name === "READY TO OCCUPY" && el.color === "#3b82f6") return 5;
+    return 6;
+  };
+  allElements.sort((a, b) => priority(a) - priority(b));
   return allElements;
 }
 

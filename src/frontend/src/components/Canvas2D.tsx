@@ -53,6 +53,25 @@ const BATCHING_PLANT_AREAS = [
 const HANDLE_POSITIONS = ["tl", "tr", "bl", "br"] as const;
 
 let textLabelCounter = BigInt(10000);
+function getRenderPriority(el: YardElement): number {
+  if (["Road", "Road-Boundary", "Road-Vertical", "Barricade"].includes(el.name))
+    return 0;
+  if (el.name === "Bay") return 1;
+  if (
+    [
+      "I-Girder",
+      "Box-I-Girder-Formwork",
+      "Factory-Shed",
+      "Reinforcement-Cage",
+    ].includes(el.name)
+  )
+    return 2;
+  if (el.name === "READY TO OCCUPY" && el.color === "#EAB308") return 3;
+  if (el.name === "READY TO OCCUPY" && el.color === "#ef4444") return 4;
+  if (el.name === "READY TO OCCUPY" && el.color === "#3b82f6") return 5;
+  return 6;
+}
+
 function genTextId(): bigint {
   textLabelCounter += BigInt(1);
   return textLabelCounter;
@@ -843,474 +862,477 @@ export function Canvas2D({
             })()}
 
           {/* Elements */}
-          {elements.map((el) => {
-            const ex = el.xPosition * pxPerM + MARGIN;
-            const ey = el.yPosition * pxPerM + MARGIN;
-            const ew = el.width * pxPerM;
-            const eh = el.height * pxPerM;
-            const isSelected = selectedIds.has(el.id);
-            const isSnapTarget = snapTargetId === el.id;
-            const cx = ex + ew / 2;
-            const cy = ey + eh / 2;
+          {[...elements]
+            .sort((a, b) => getRenderPriority(a) - getRenderPriority(b))
+            .map((el) => {
+              const ex = el.xPosition * pxPerM + MARGIN;
+              const ey = el.yPosition * pxPerM + MARGIN;
+              const ew = el.width * pxPerM;
+              const eh = el.height * pxPerM;
+              const isSelected = selectedIds.has(el.id);
+              const isSnapTarget = snapTargetId === el.id;
+              const cx = ex + ew / 2;
+              const cy = ey + eh / 2;
 
-            const handlePositions: Record<string, [number, number]> = {
-              tl: [ex, ey],
-              tr: [ex + ew, ey],
-              bl: [ex, ey + eh],
-              br: [ex + ew, ey + eh],
-            };
+              const handlePositions: Record<string, [number, number]> = {
+                tl: [ex, ey],
+                tr: [ex + ew, ey],
+                bl: [ex, ey + eh],
+                br: [ex + ew, ey + eh],
+              };
 
-            return (
-              <g
-                key={String(el.id)}
-                transform={`rotate(${el.rotationAngle}, ${cx}, ${cy})`}
-                onMouseDown={(e) => handleMouseDown(e, el)}
-                style={{
-                  cursor:
-                    activeTool === "rotate"
-                      ? "crosshair"
-                      : activeTool === "text"
-                        ? "text"
-                        : "pointer",
-                }}
-              >
-                {el.name === "Batching-Plant" ? (
-                  <>
-                    {BATCHING_PLANT_AREAS.map((area, areaIdx) => {
-                      const areaW = ew / BATCHING_PLANT_AREAS.length;
-                      const areaX = ex + areaIdx * areaW;
-                      const lines = area.label.split(" ");
-                      const fontSize = Math.min(9, Math.max(5, areaW * 0.55));
-                      return (
-                        <g key={area.label} style={{ pointerEvents: "none" }}>
-                          <rect
-                            x={areaX}
-                            y={ey}
-                            width={areaW}
+              return (
+                <g
+                  key={String(el.id)}
+                  transform={`rotate(${el.rotationAngle}, ${cx}, ${cy})`}
+                  onMouseDown={(e) => handleMouseDown(e, el)}
+                  style={{
+                    cursor:
+                      activeTool === "rotate"
+                        ? "crosshair"
+                        : activeTool === "text"
+                          ? "text"
+                          : "pointer",
+                  }}
+                >
+                  {el.name === "Batching-Plant" ? (
+                    <>
+                      {BATCHING_PLANT_AREAS.map((area, areaIdx) => {
+                        const areaW = ew / BATCHING_PLANT_AREAS.length;
+                        const areaX = ex + areaIdx * areaW;
+                        const lines = area.label.split(" ");
+                        const fontSize = Math.min(9, Math.max(5, areaW * 0.55));
+                        return (
+                          <g key={area.label} style={{ pointerEvents: "none" }}>
+                            <rect
+                              x={areaX}
+                              y={ey}
+                              width={areaW}
+                              height={eh}
+                              fill={area.color}
+                              stroke="#94a3b8"
+                              strokeWidth={0.5}
+                            />
+                            <text
+                              transform={`translate(${areaX + areaW / 2}, ${ey + eh / 2}) rotate(-90)`}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fontSize={fontSize}
+                              fontFamily="sans-serif"
+                              fontWeight="600"
+                              fill="#374151"
+                            >
+                              {lines.map((line, li) => (
+                                <tspan
+                                  key={`${area.label}-${li}`}
+                                  x={0}
+                                  dy={
+                                    li === 0
+                                      ? -(lines.length - 1) * fontSize * 0.6
+                                      : fontSize * 1.2
+                                  }
+                                >
+                                  {line}
+                                </tspan>
+                              ))}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      {/* Outer border */}
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill="none"
+                        stroke={isSelected ? "#1E7ACB" : "#374151"}
+                        strokeWidth={isSelected ? 2 : 1}
+                        strokeDasharray={isSelected ? "4 2" : undefined}
+                      />
+                      {/* "BATCHING PLANT" title above the group */}
+                      <text
+                        x={cx}
+                        y={ey - 4}
+                        textAnchor="middle"
+                        fontSize={Math.min(9, Math.max(6, ew / 20))}
+                        fontWeight="700"
+                        fontFamily="sans-serif"
+                        fill="#374151"
+                        style={{ pointerEvents: "none" }}
+                      >
+                        BATCHING PLANT
+                      </text>
+                    </>
+                  ) : el.imageUrl &&
+                    (el.name === "Reinforcement-Cage" ||
+                      el.name === "Factory-Shed" ||
+                      el.name === "Road" ||
+                      el.name === "Road-Boundary") ? (
+                    <>
+                      <defs>
+                        <pattern
+                          id={`tile-pattern-${el.id}`}
+                          patternUnits="userSpaceOnUse"
+                          x={ex}
+                          y={ey}
+                          width={eh}
+                          height={eh}
+                        >
+                          <image
+                            href={el.imageUrl}
+                            x={0}
+                            y={0}
+                            width={eh}
                             height={eh}
-                            fill={area.color}
-                            stroke="#94a3b8"
-                            strokeWidth={0.5}
+                            preserveAspectRatio="xMidYMid slice"
+                          />
+                        </pattern>
+                      </defs>
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill={`url(#tile-pattern-${el.id})`}
+                        style={{ pointerEvents: "none" }}
+                      />
+                      {isSelected && (
+                        <rect
+                          x={ex}
+                          y={ey}
+                          width={ew}
+                          height={eh}
+                          fill="none"
+                          stroke="#1E7ACB"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                        />
+                      )}
+                    </>
+                  ) : el.imageUrl && el.name === "Road-Vertical" ? (
+                    <>
+                      <defs>
+                        <pattern
+                          id={`tile-pattern-v-${el.id}`}
+                          patternUnits="userSpaceOnUse"
+                          x={ex}
+                          y={ey}
+                          width={ew}
+                          height={ew}
+                        >
+                          <image
+                            href={el.imageUrl}
+                            x={0}
+                            y={0}
+                            width={ew}
+                            height={ew}
+                            transform={`rotate(90, ${ew / 2}, ${ew / 2})`}
+                            preserveAspectRatio="xMidYMid slice"
+                          />
+                        </pattern>
+                      </defs>
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill={`url(#tile-pattern-v-${el.id})`}
+                        style={{ pointerEvents: "none" }}
+                      />
+                      {isSelected && (
+                        <rect
+                          x={ex}
+                          y={ey}
+                          width={ew}
+                          height={eh}
+                          fill="none"
+                          stroke="#1E7ACB"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                        />
+                      )}
+                    </>
+                  ) : el.imageUrl ? (
+                    <>
+                      <image
+                        href={el.imageUrl}
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        preserveAspectRatio="none"
+                        style={{ pointerEvents: "none" }}
+                      />
+                      {isSelected && (
+                        <rect
+                          x={ex}
+                          y={ey}
+                          width={ew}
+                          height={eh}
+                          fill="none"
+                          stroke="#1E7ACB"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                        />
+                      )}
+                    </>
+                  ) : el.name === "Box-I-Girder-Formwork" ? (
+                    <>
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill="#FF6600"
+                        opacity={0.9}
+                        stroke="none"
+                      />
+                      {/* Inner black top border line */}
+                      <line
+                        x1={ex}
+                        y1={ey + 2}
+                        x2={ex + ew}
+                        y2={ey + 2}
+                        stroke="black"
+                        strokeWidth={2}
+                        style={{ pointerEvents: "none" }}
+                      />
+                      {/* Inner black bottom border line */}
+                      <line
+                        x1={ex}
+                        y1={ey + eh - 2}
+                        x2={ex + ew}
+                        y2={ey + eh - 2}
+                        stroke="black"
+                        strokeWidth={2}
+                        style={{ pointerEvents: "none" }}
+                      />
+                      {isSelected && (
+                        <rect
+                          x={ex}
+                          y={ey}
+                          width={ew}
+                          height={eh}
+                          fill="none"
+                          stroke="#1E7ACB"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                        />
+                      )}
+                    </>
+                  ) : el.name === "READY TO OCCUPY" ? (
+                    <>
+                      <rect
+                        x={ex}
+                        y={ey}
+                        width={ew}
+                        height={eh}
+                        fill={el.color}
+                        opacity={0.45}
+                        stroke={el.color}
+                        strokeWidth={1.5}
+                        strokeDasharray="6 3"
+                      />
+                      {isSelected && (
+                        <rect
+                          x={ex}
+                          y={ey}
+                          width={ew}
+                          height={eh}
+                          fill="none"
+                          stroke="#1E7ACB"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <ElementShape
+                      shape={el.shape}
+                      ex={ex}
+                      ey={ey}
+                      ew={ew}
+                      eh={eh}
+                      color={el.color}
+                      isSelected={isSelected}
+                      pxPerM={pxPerM}
+                    />
+                  )}
+                  {/* Label rendering: Bay, I-Girder, Reinforcement-Cage, others */}
+                  {(() => {
+                    if (el.name === "Batching-Plant") return null;
+
+                    if (el.name === "Bay") {
+                      // Compute 1-based index by sorting bays by yPosition
+                      const bays = elements
+                        .filter((e) => e.name === "Bay")
+                        .sort((a, b) => a.yPosition - b.yPosition);
+                      const bayIndex =
+                        bays.findIndex((b) => b.id === el.id) + 1;
+                      const radius = Math.max(
+                        10,
+                        Math.min(Math.min(ew, eh) * 0.15, 18),
+                      );
+                      const fontSize = radius * 0.9;
+                      return (
+                        <g style={{ pointerEvents: "none" }}>
+                          <circle
+                            cx={cx}
+                            cy={cy}
+                            r={radius}
+                            fill="white"
+                            opacity={0.9}
                           />
                           <text
-                            transform={`translate(${areaX + areaW / 2}, ${ey + eh / 2}) rotate(-90)`}
+                            x={cx}
+                            y={cy + fontSize * 0.35}
                             textAnchor="middle"
-                            dominantBaseline="central"
                             fontSize={fontSize}
+                            fontWeight="700"
                             fontFamily="sans-serif"
-                            fontWeight="600"
-                            fill="#374151"
+                            fill="#1a6b2a"
+                            style={{ pointerEvents: "none" }}
                           >
-                            {lines.map((line, li) => (
-                              <tspan
-                                key={`${area.label}-${li}`}
-                                x={0}
-                                dy={
-                                  li === 0
-                                    ? -(lines.length - 1) * fontSize * 0.6
-                                    : fontSize * 1.2
-                                }
-                              >
-                                {line}
-                              </tspan>
-                            ))}
+                            {`B${bayIndex}`}
                           </text>
                         </g>
                       );
-                    })}
-                    {/* Outer border */}
-                    <rect
-                      x={ex}
-                      y={ey}
-                      width={ew}
-                      height={eh}
-                      fill="none"
-                      stroke={isSelected ? "#1E7ACB" : "#374151"}
-                      strokeWidth={isSelected ? 2 : 1}
-                      strokeDasharray={isSelected ? "4 2" : undefined}
-                    />
-                    {/* "BATCHING PLANT" title above the group */}
-                    <text
-                      x={cx}
-                      y={ey - 4}
-                      textAnchor="middle"
-                      fontSize={Math.min(9, Math.max(6, ew / 20))}
-                      fontWeight="700"
-                      fontFamily="sans-serif"
-                      fill="#374151"
-                      style={{ pointerEvents: "none" }}
-                    >
-                      BATCHING PLANT
-                    </text>
-                  </>
-                ) : el.imageUrl &&
-                  (el.name === "Reinforcement-Cage" ||
-                    el.name === "Factory-Shed" ||
-                    el.name === "Road" ||
-                    el.name === "Road-Boundary") ? (
-                  <>
-                    <defs>
-                      <pattern
-                        id={`tile-pattern-${el.id}`}
-                        patternUnits="userSpaceOnUse"
-                        x={ex}
-                        y={ey}
-                        width={eh}
-                        height={eh}
-                      >
-                        <image
-                          href={el.imageUrl}
-                          x={0}
-                          y={0}
-                          width={eh}
-                          height={eh}
-                          preserveAspectRatio="xMidYMid slice"
-                        />
-                      </pattern>
-                    </defs>
-                    <rect
-                      x={ex}
-                      y={ey}
-                      width={ew}
-                      height={eh}
-                      fill={`url(#tile-pattern-${el.id})`}
-                      style={{ pointerEvents: "none" }}
-                    />
-                    {isSelected && (
-                      <rect
-                        x={ex}
-                        y={ey}
-                        width={ew}
-                        height={eh}
-                        fill="none"
-                        stroke="#1E7ACB"
-                        strokeWidth={2}
-                        strokeDasharray="4 2"
-                      />
-                    )}
-                  </>
-                ) : el.imageUrl && el.name === "Road-Vertical" ? (
-                  <>
-                    <defs>
-                      <pattern
-                        id={`tile-pattern-v-${el.id}`}
-                        patternUnits="userSpaceOnUse"
-                        x={ex}
-                        y={ey}
-                        width={ew}
-                        height={ew}
-                      >
-                        <image
-                          href={el.imageUrl}
-                          x={0}
-                          y={0}
-                          width={ew}
-                          height={ew}
-                          transform={`rotate(90, ${ew / 2}, ${ew / 2})`}
-                          preserveAspectRatio="xMidYMid slice"
-                        />
-                      </pattern>
-                    </defs>
-                    <rect
-                      x={ex}
-                      y={ey}
-                      width={ew}
-                      height={eh}
-                      fill={`url(#tile-pattern-v-${el.id})`}
-                      style={{ pointerEvents: "none" }}
-                    />
-                    {isSelected && (
-                      <rect
-                        x={ex}
-                        y={ey}
-                        width={ew}
-                        height={eh}
-                        fill="none"
-                        stroke="#1E7ACB"
-                        strokeWidth={2}
-                        strokeDasharray="4 2"
-                      />
-                    )}
-                  </>
-                ) : el.imageUrl ? (
-                  <>
-                    <image
-                      href={el.imageUrl}
-                      x={ex}
-                      y={ey}
-                      width={ew}
-                      height={eh}
-                      preserveAspectRatio="none"
-                      style={{ pointerEvents: "none" }}
-                    />
-                    {isSelected && (
-                      <rect
-                        x={ex}
-                        y={ey}
-                        width={ew}
-                        height={eh}
-                        fill="none"
-                        stroke="#1E7ACB"
-                        strokeWidth={2}
-                        strokeDasharray="4 2"
-                      />
-                    )}
-                  </>
-                ) : el.name === "Box-I-Girder-Formwork" ? (
-                  <>
-                    <rect
-                      x={ex}
-                      y={ey}
-                      width={ew}
-                      height={eh}
-                      fill="#FF6600"
-                      opacity={0.9}
-                      stroke="none"
-                    />
-                    {/* Inner black top border line */}
-                    <line
-                      x1={ex}
-                      y1={ey + 2}
-                      x2={ex + ew}
-                      y2={ey + 2}
-                      stroke="black"
-                      strokeWidth={2}
-                      style={{ pointerEvents: "none" }}
-                    />
-                    {/* Inner black bottom border line */}
-                    <line
-                      x1={ex}
-                      y1={ey + eh - 2}
-                      x2={ex + ew}
-                      y2={ey + eh - 2}
-                      stroke="black"
-                      strokeWidth={2}
-                      style={{ pointerEvents: "none" }}
-                    />
-                    {isSelected && (
-                      <rect
-                        x={ex}
-                        y={ey}
-                        width={ew}
-                        height={eh}
-                        fill="none"
-                        stroke="#1E7ACB"
-                        strokeWidth={2}
-                        strokeDasharray="4 2"
-                      />
-                    )}
-                  </>
-                ) : el.name === "READY TO OCCUPY" ? (
-                  <>
-                    <rect
-                      x={ex}
-                      y={ey}
-                      width={ew}
-                      height={eh}
-                      fill={el.color}
-                      opacity={0.45}
-                      stroke={el.color}
-                      strokeWidth={1.5}
-                      strokeDasharray="6 3"
-                    />
-                    {isSelected && (
-                      <rect
-                        x={ex}
-                        y={ey}
-                        width={ew}
-                        height={eh}
-                        fill="none"
-                        stroke="#1E7ACB"
-                        strokeWidth={2}
-                        strokeDasharray="4 2"
-                      />
-                    )}
-                  </>
-                ) : (
-                  <ElementShape
-                    shape={el.shape}
-                    ex={ex}
-                    ey={ey}
-                    ew={ew}
-                    eh={eh}
-                    color={el.color}
-                    isSelected={isSelected}
-                    pxPerM={pxPerM}
-                  />
-                )}
-                {/* Label rendering: Bay, I-Girder, Reinforcement-Cage, others */}
-                {(() => {
-                  if (el.name === "Batching-Plant") return null;
+                    }
 
-                  if (el.name === "Bay") {
-                    // Compute 1-based index by sorting bays by yPosition
-                    const bays = elements
-                      .filter((e) => e.name === "Bay")
-                      .sort((a, b) => a.yPosition - b.yPosition);
-                    const bayIndex = bays.findIndex((b) => b.id === el.id) + 1;
-                    const radius = Math.max(
-                      10,
-                      Math.min(Math.min(ew, eh) * 0.15, 18),
-                    );
-                    const fontSize = radius * 0.9;
-                    return (
-                      <g style={{ pointerEvents: "none" }}>
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r={radius}
-                          fill="white"
-                          opacity={0.9}
-                        />
-                        <text
-                          x={cx}
-                          y={cy + fontSize * 0.35}
-                          textAnchor="middle"
-                          fontSize={fontSize}
-                          fontWeight="700"
-                          fontFamily="sans-serif"
-                          fill="#1a6b2a"
-                          style={{ pointerEvents: "none" }}
-                        >
-                          {`B${bayIndex}`}
-                        </text>
-                      </g>
-                    );
-                  }
+                    if (
+                      el.name === "I-Girder" ||
+                      el.name === "Reinforcement-Cage"
+                    ) {
+                      // Info panels rendered in a separate top-layer pass below
+                      return null;
+                    }
 
-                  if (
-                    el.name === "I-Girder" ||
-                    el.name === "Reinforcement-Cage"
-                  ) {
-                    // Info panels rendered in a separate top-layer pass below
-                    return null;
-                  }
-
-                  if (el.name === "READY TO OCCUPY") {
-                    const fontSize = Math.min(
-                      12,
-                      Math.max(6, Math.min(ew, eh) / 6),
-                    );
-                    return (
-                      <g style={{ pointerEvents: "none" }}>
-                        <rect
-                          x={cx - ew * 0.35}
-                          y={cy - fontSize * 1.6}
-                          width={ew * 0.7}
-                          height={fontSize * 3.2}
-                          rx={3}
-                          fill="rgba(0,0,0,0.45)"
-                        />
-                        <text
-                          x={cx}
-                          y={cy - fontSize * 0.1}
-                          textAnchor="middle"
-                          fontSize={fontSize}
-                          fontWeight="700"
-                          fontFamily="sans-serif"
-                          fill="white"
-                          letterSpacing="0.5"
-                        >
-                          <tspan x={cx} dy={`-${fontSize * 0.7}px`}>
-                            READY TO
-                          </tspan>
-                          <tspan x={cx} dy={`${fontSize * 1.4}px`}>
-                            OCCUPY
-                          </tspan>
-                        </text>
-                      </g>
-                    );
-                  }
-
-                  // Default: show last word of element name
-                  return (
-                    <text
-                      x={cx}
-                      y={cy + 3.5}
-                      textAnchor="middle"
-                      fontSize={Math.min(10, Math.max(7, ew / 4))}
-                      fontWeight="700"
-                      fill="rgba(0,0,0,0.75)"
-                      style={{ pointerEvents: "none" }}
-                    >
-                      {el.name.split(" ").slice(-1)[0]}
-                    </text>
-                  );
-                })()}
-                {/* Snap highlight */}
-                {isSnapTarget && (
-                  <rect
-                    x={ex - 2}
-                    y={ey - 2}
-                    width={ew + 4}
-                    height={eh + 4}
-                    fill="none"
-                    stroke="#22c55e"
-                    strokeWidth={2}
-                    strokeDasharray="4 2"
-                    style={{ pointerEvents: "none" }}
-                  />
-                )}
-                {isSelected && (
-                  <>
-                    {HANDLE_POSITIONS.map((pos) => {
-                      const [hx, hy] = handlePositions[pos];
-                      return (
-                        <rect
-                          key={pos}
-                          x={hx - 3}
-                          y={hy - 3}
-                          width={6}
-                          height={6}
-                          fill="white"
-                          stroke="#1E7ACB"
-                          strokeWidth={1.5}
-                          style={{ pointerEvents: "none" }}
-                        />
+                    if (el.name === "READY TO OCCUPY") {
+                      const fontSize = Math.min(
+                        12,
+                        Math.max(6, Math.min(ew, eh) / 6),
                       );
-                    })}
-                    {selectedIds.size === 1 && (
-                      <>
-                        <circle
-                          cx={cx}
-                          cy={ey - 10}
-                          r={4}
-                          fill="#1E7ACB"
-                          stroke="white"
-                          strokeWidth={1.5}
-                          style={{ cursor: "crosshair" }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            const pt = getSVGPoint(e);
-                            const angle =
-                              Math.atan2(pt.y - cy, pt.x - cx) *
-                              (180 / Math.PI);
-                            setRotateDrag({
-                              id: el.id,
-                              cx,
-                              cy,
-                              startAngle: angle,
-                              origAngle: el.rotationAngle,
-                            });
-                          }}
-                        />
-                        <line
-                          x1={cx}
-                          y1={ey}
-                          x2={cx}
-                          y2={ey - 10}
-                          stroke="#1E7ACB"
-                          strokeWidth={1}
-                          strokeDasharray="2,2"
-                          style={{ pointerEvents: "none" }}
-                        />
-                      </>
-                    )}
-                  </>
-                )}
-              </g>
-            );
-          })}
+                      return (
+                        <g style={{ pointerEvents: "none" }}>
+                          <rect
+                            x={cx - ew * 0.35}
+                            y={cy - fontSize * 1.6}
+                            width={ew * 0.7}
+                            height={fontSize * 3.2}
+                            rx={3}
+                            fill="rgba(0,0,0,0.45)"
+                          />
+                          <text
+                            x={cx}
+                            y={cy - fontSize * 0.1}
+                            textAnchor="middle"
+                            fontSize={fontSize}
+                            fontWeight="700"
+                            fontFamily="sans-serif"
+                            fill="white"
+                            letterSpacing="0.5"
+                          >
+                            <tspan x={cx} dy={`-${fontSize * 0.7}px`}>
+                              READY TO
+                            </tspan>
+                            <tspan x={cx} dy={`${fontSize * 1.4}px`}>
+                              OCCUPY
+                            </tspan>
+                          </text>
+                        </g>
+                      );
+                    }
+
+                    // Default: show last word of element name
+                    return (
+                      <text
+                        x={cx}
+                        y={cy + 3.5}
+                        textAnchor="middle"
+                        fontSize={Math.min(10, Math.max(7, ew / 4))}
+                        fontWeight="700"
+                        fill="rgba(0,0,0,0.75)"
+                        style={{ pointerEvents: "none" }}
+                      >
+                        {el.name.split(" ").slice(-1)[0]}
+                      </text>
+                    );
+                  })()}
+                  {/* Snap highlight */}
+                  {isSnapTarget && (
+                    <rect
+                      x={ex - 2}
+                      y={ey - 2}
+                      width={ew + 4}
+                      height={eh + 4}
+                      fill="none"
+                      stroke="#22c55e"
+                      strokeWidth={2}
+                      strokeDasharray="4 2"
+                      style={{ pointerEvents: "none" }}
+                    />
+                  )}
+                  {isSelected && (
+                    <>
+                      {HANDLE_POSITIONS.map((pos) => {
+                        const [hx, hy] = handlePositions[pos];
+                        return (
+                          <rect
+                            key={pos}
+                            x={hx - 3}
+                            y={hy - 3}
+                            width={6}
+                            height={6}
+                            fill="white"
+                            stroke="#1E7ACB"
+                            strokeWidth={1.5}
+                            style={{ pointerEvents: "none" }}
+                          />
+                        );
+                      })}
+                      {selectedIds.size === 1 && (
+                        <>
+                          <circle
+                            cx={cx}
+                            cy={ey - 10}
+                            r={4}
+                            fill="#1E7ACB"
+                            stroke="white"
+                            strokeWidth={1.5}
+                            style={{ cursor: "crosshair" }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              const pt = getSVGPoint(e);
+                              const angle =
+                                Math.atan2(pt.y - cy, pt.x - cx) *
+                                (180 / Math.PI);
+                              setRotateDrag({
+                                id: el.id,
+                                cx,
+                                cy,
+                                startAngle: angle,
+                                origAngle: el.rotationAngle,
+                              });
+                            }}
+                          />
+                          <line
+                            x1={cx}
+                            y1={ey}
+                            x2={cx}
+                            y2={ey - 10}
+                            stroke="#1E7ACB"
+                            strokeWidth={1}
+                            strokeDasharray="2,2"
+                            style={{ pointerEvents: "none" }}
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+                </g>
+              );
+            })}
 
           {/* I-Girder / R-Cage Info Panels - rendered on top layer */}
           {(() => {
