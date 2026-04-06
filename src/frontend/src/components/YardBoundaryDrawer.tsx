@@ -1,13 +1,17 @@
+import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import L from "leaflet";
 import {
   ArrowRight,
   CheckCircle2,
   Info,
-  Layers,
+  Lock,
+  LockOpen,
   Pencil,
   RotateCcw,
+  Search,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -378,92 +382,218 @@ export function YardBoundaryDrawer({
   onConfirm,
   onCancel,
 }: YardBoundaryDrawerProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Viewport / pan / zoom state
-  const [vpOffset, setVpOffset] = useState({ x: 0, y: 0 });
-  const [vpScale, setVpScale] = useState(2); // px per meter
-  const isPanning = useRef(false);
-  const panStart = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
+  // Map state
+  const [mapLocked, setMapLocked] = useState(false);
+  const [metersPerPixel, setMetersPerPixel] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchError, setSearchError] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
 
-  // Drawing state
-  const [points, setPoints] = useState<BoundaryPoint[]>([]);
-  const [cursor, setCursor] = useState<BoundaryPoint | null>(null);
+  // Drawing state (pixel coords on the SVG overlay)
+  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [closed, setClosed] = useState(false);
   const [showBayConfig, setShowBayConfig] = useState(false);
 
-  // Tooltip hint
+  // SVG pan (when locked, right-click drag pans the SVG viewport offset)
+  const svgPanRef = useRef(false);
+  const svgPanStart = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
+  const [svgOffset, setSvgOffset] = useState({ x: 0, y: 0 });
+
+  // Hint text
   const [hint, setHint] = useState(
-    "Click to place boundary points · Right-click to pan · Scroll to zoom · Double-click or click first point to close",
+    "Search for a location, then lock the map to start drawing your boundary",
   );
 
-  // Grid size in meters
-  const GRID = 10;
-  // Canvas in meters (large virtual space)
-  const _CANVAS_M = 2000;
+  // ── Initialize Leaflet map ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
 
-  function svgToMeters(clientX: number, clientY: number): BoundaryPoint {
+    const map = L.map(mapContainerRef.current, {
+      center: [20.5937, 78.9629],
+      zoom: 5,
+      zoomControl: true,
+      attributionControl: true,
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    mapRef.current = map;
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // ── Lock / unlock map ──────────────────────────────────────────────────────
+  function lockMap() {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.dragging.disable();
+    map.scrollWheelZoom.disable();
+    map.doubleClickZoom.disable();
+    map.touchZoom.disable();
+    map.boxZoom.disable();
+    map.keyboard.disable();
+
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const lat = center.lat;
+    // Earth circumference × cos(lat) / 2^(zoom+8) = meters per pixel
+    const mpp =
+      (40075016.686 * Math.cos((lat * Math.PI) / 180)) / 2 ** (zoom + 8);
+    setMetersPerPixel(mpp > 0 ? mpp : 1);
+    setMapLocked(true);
+    setHint(
+      "Map locked. Click to place boundary points · Right-click drag to pan · Double-click or click first point to close",
+    );
+  }
+
+  function unlockMap() {
+    const map = mapRef.current;
+    if (!map) return;
+
+    map.dragging.enable();
+    map.scrollWheelZoom.enable();
+    map.doubleClickZoom.enable();
+    map.touchZoom.enable();
+    map.boxZoom.enable();
+    map.keyboard.enable();
+
+    // Reset all drawing state
+    setMapLocked(false);
+    setPoints([]);
+    setClosed(false);
+    setCursor(null);
+    setSvgOffset({ x: 0, y: 0 });
+    setHint(
+      "Search for a location, then lock the map to start drawing your boundary",
+    );
+  }
+
+  // ── Search (Nominatim) ─────────────────────────────────────────────────────
+  async function handleSearch() {
+    const q = searchQuery.trim();
+    if (!q) return;
+    setIsSearching(true);
+    setSearchError("");
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,
+        { headers: { Accept: "application/json" } },
+      );
+      const data = await res.json();
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        mapRef.current?.setView(
+          [Number.parseFloat(lat), Number.parseFloat(lon)],
+          15,
+        );
+        setSearchError("");
+      } else {
+        setSearchError("Location not found");
+      }
+    } catch {
+      setSearchError("Search failed");
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  // ── SVG Drawing logic ──────────────────────────────────────────────────────
+  function getSvgPoint(
+    clientX: number,
+    clientY: number,
+  ): { x: number; y: number } {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    const mx = (clientX - rect.left - vpOffset.x) / vpScale;
-    const my = (clientY - rect.top - vpOffset.y) / vpScale;
-    // Snap to 1m grid
-    return { x: Math.round(mx), y: Math.round(my) };
+    return {
+      x: clientX - rect.left - svgOffset.x,
+      y: clientY - rect.top - svgOffset.y,
+    };
   }
 
-  function handleMouseMove(e: React.MouseEvent<SVGSVGElement>) {
-    if (closed) return;
-    if (isPanning.current) {
-      const dx = e.clientX - panStart.current.mx;
-      const dy = e.clientY - panStart.current.my;
-      setVpOffset({ x: panStart.current.ox + dx, y: panStart.current.oy + dy });
+  function handleSvgMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    if (!mapLocked) return;
+
+    if (svgPanRef.current) {
+      const dx = e.clientX - svgPanStart.current.mx;
+      const dy = e.clientY - svgPanStart.current.my;
+      setSvgOffset({
+        x: svgPanStart.current.ox + dx,
+        y: svgPanStart.current.oy + dy,
+      });
       return;
     }
-    setCursor(svgToMeters(e.clientX, e.clientY));
+
+    if (!closed) {
+      const pt = getSvgPoint(e.clientX, e.clientY);
+      setCursor(pt);
+    }
   }
 
-  function handleMouseDown(e: React.MouseEvent<SVGSVGElement>) {
-    if (e.button === 2 || e.button === 1) {
+  function handleSvgMouseDown(e: React.MouseEvent<SVGSVGElement>) {
+    if (!mapLocked) return;
+
+    // Right-click: pan the SVG overlay
+    if (e.button === 2) {
       e.preventDefault();
-      isPanning.current = true;
-      panStart.current = {
+      svgPanRef.current = true;
+      svgPanStart.current = {
         mx: e.clientX,
         my: e.clientY,
-        ox: vpOffset.x,
-        oy: vpOffset.y,
+        ox: svgOffset.x,
+        oy: svgOffset.y,
       };
       return;
     }
-    if (closed) return;
-    if (e.button !== 0) return;
 
-    const pt = svgToMeters(e.clientX, e.clientY);
+    if (closed || e.button !== 0) return;
 
-    // Click on first point to close
+    const pt = getSvgPoint(e.clientX, e.clientY);
+
+    // Click on first point to close (within 12px)
     if (points.length >= 3) {
       const first = points[0];
       const distPx = Math.sqrt(
-        ((first.x - pt.x) * vpScale) ** 2 + ((first.y - pt.y) * vpScale) ** 2,
+        (first.x +
+          svgOffset.x -
+          (e.clientX - svgRef.current!.getBoundingClientRect().left)) **
+          2 +
+          (first.y +
+            svgOffset.y -
+            (e.clientY - svgRef.current!.getBoundingClientRect().top)) **
+            2,
       );
-      if (distPx < 10) {
+      if (distPx < 12) {
         closeBoundary();
         return;
       }
     }
+
     setPoints((prev) => [...prev, pt]);
   }
 
-  function handleMouseUp(e: React.MouseEvent<SVGSVGElement>) {
-    if (e.button === 2 || e.button === 1) {
-      isPanning.current = false;
+  function handleSvgMouseUp(e: React.MouseEvent<SVGSVGElement>) {
+    if (e.button === 2) {
+      svgPanRef.current = false;
     }
   }
 
-  function handleDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
+  function handleSvgDoubleClick(e: React.MouseEvent<SVGSVGElement>) {
     e.preventDefault();
-    if (closed || points.length < 3) return;
+    if (!mapLocked || closed || points.length < 3) return;
     closeBoundary();
   }
 
@@ -473,28 +603,13 @@ export function YardBoundaryDrawer({
     setHint("Boundary defined. Configure bays to place inside it.");
   }
 
-  function handleWheel(e: React.WheelEvent<SVGSVGElement>) {
-    e.preventDefault();
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    const newScale = Math.min(20, Math.max(0.3, vpScale * factor));
-    // Zoom towards mouse
-    const newOx = mouseX - (mouseX - vpOffset.x) * (newScale / vpScale);
-    const newOy = mouseY - (mouseY - vpOffset.y) * (newScale / vpScale);
-    setVpScale(newScale);
-    setVpOffset({ x: newOx, y: newOy });
-  }
-
   function handleReset() {
     setPoints([]);
     setClosed(false);
     setCursor(null);
+    setSvgOffset({ x: 0, y: 0 });
     setHint(
-      "Click to place boundary points · Right-click to pan · Scroll to zoom · Double-click or click first point to close",
+      "Map locked. Click to place boundary points · Right-click drag to pan · Double-click or click first point to close",
     );
   }
 
@@ -502,13 +617,23 @@ export function YardBoundaryDrawer({
     if (closed) {
       setClosed(false);
       setHint(
-        "Click to place boundary points · Double-click or click first point to close",
+        "Map locked. Click to place boundary points · Double-click or click first point to close",
       );
     } else {
       setPoints((prev) => prev.slice(0, -1));
     }
   }
 
+  // Prevent context menu on SVG
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const prevent = (e: MouseEvent) => e.preventDefault();
+    el.addEventListener("contextmenu", prevent);
+    return () => el.removeEventListener("contextmenu", prevent);
+  }, []);
+
+  // ── Bounding box (in pixel space) ─────────────────────────────────────────
   const boundingBox = useCallback(() => {
     if (points.length < 2) return null;
     const xs = points.map((p) => p.x);
@@ -523,6 +648,16 @@ export function YardBoundaryDrawer({
     };
   }, [points]);
 
+  // Convert pixel points to meter points
+  function toMeterPoints(
+    pts: { x: number; y: number }[],
+  ): { x: number; y: number }[] {
+    return pts.map((p) => ({
+      x: p.x * metersPerPixel,
+      y: p.y * metersPerPixel,
+    }));
+  }
+
   function handleBayConfigConfirm(
     bayCount: number,
     bayLength: number,
@@ -530,15 +665,16 @@ export function YardBoundaryDrawer({
   ) {
     const bb = boundingBox();
     if (!bb) return;
-    // Derive yardLength/yardWidth from bounding box, add some margin
-    const margin = 20;
-    const yardLength = bb.width + margin * 2;
-    const yardWidth = bb.height + margin * 2;
+    const margin = 20; // meters
+    const bbWidthM = bb.width * metersPerPixel;
+    const bbHeightM = bb.height * metersPerPixel;
+    const yardLength = bbWidthM + margin * 2;
+    const yardWidth = bbHeightM + margin * 2;
 
-    // Translate boundary points so they start from margin,margin
-    const translatedPoints = points.map((p) => ({
-      x: p.x - bb.minX + margin,
-      y: p.y - bb.minY + margin,
+    const meterPts = toMeterPoints(points);
+    const translatedPoints = meterPts.map((p) => ({
+      x: p.x - bb.minX * metersPerPixel + margin,
+      y: p.y - bb.minY * metersPerPixel + margin,
     }));
 
     onConfirm({
@@ -551,155 +687,174 @@ export function YardBoundaryDrawer({
     });
   }
 
-  // Prevent right-click context menu on the SVG
-  useEffect(() => {
-    const el = svgRef.current;
-    if (!el) return;
-    const prevent = (e: MouseEvent) => e.preventDefault();
-    el.addEventListener("contextmenu", prevent);
-    return () => el.removeEventListener("contextmenu", prevent);
-  }, []);
-
-  // Build polyline points string
-  function mToSvg(mx: number, my: number) {
-    return {
-      x: mx * vpScale + vpOffset.x,
-      y: my * vpScale + vpOffset.y,
-    };
-  }
-
-  const svgPoints = points.map((p) => {
-    const s = mToSvg(p.x, p.y);
-    return `${s.x},${s.y}`;
-  });
-
+  // ── Compute bounding box and translated meter points for BayConfigModal ────
   const bb = boundingBox();
+  const bbWidthM = bb ? bb.width * metersPerPixel : 0;
+  const bbHeightM = bb ? bb.height * metersPerPixel : 0;
+  const margin = 20;
+  const translatedMeterPts = bb
+    ? toMeterPoints(points).map((p) => ({
+        x: p.x - bb.minX * metersPerPixel + margin,
+        y: p.y - bb.minY * metersPerPixel + margin,
+      }))
+    : [];
 
-  // Grid lines
-  const gridStart = Math.floor(-vpOffset.x / vpScale / GRID) * GRID;
-  const gridEnd = gridStart + Math.ceil(3000 / vpScale / GRID) * GRID + GRID;
-  const gridLines: React.ReactNode[] = [];
-  for (let x = gridStart; x <= gridEnd; x += GRID) {
-    const sx = x * vpScale + vpOffset.x;
-    gridLines.push(
-      <line
-        key={`gx${x}`}
-        x1={sx}
-        y1={0}
-        x2={sx}
-        y2={10000}
-        stroke="oklch(0.28 0.02 220)"
-        strokeWidth={0.5}
-        opacity={0.6}
-      />,
-    );
-    gridLines.push(
-      <text
-        key={`gxt${x}`}
-        x={sx + 2}
-        y={12}
-        fontSize={9}
-        fill="oklch(0.4 0.02 220)"
-        fontFamily="monospace"
-      >
-        {x}m
-      </text>,
-    );
+  // ── SVG rendered points with offset ───────────────────────────────────────
+  function withOffset(p: { x: number; y: number }) {
+    return { x: p.x + svgOffset.x, y: p.y + svgOffset.y };
   }
-  const vGridStart = Math.floor(-vpOffset.y / vpScale / GRID) * GRID;
-  const vGridEnd = vGridStart + Math.ceil(3000 / vpScale / GRID) * GRID + GRID;
-  for (let y = vGridStart; y <= vGridEnd; y += GRID) {
-    const sy = y * vpScale + vpOffset.y;
-    gridLines.push(
-      <line
-        key={`gy${y}`}
-        x1={0}
-        y1={sy}
-        x2={10000}
-        y2={sy}
-        stroke="oklch(0.28 0.02 220)"
-        strokeWidth={0.5}
-        opacity={0.6}
-      />,
-    );
-    if (y !== vGridStart) {
-      gridLines.push(
-        <text
-          key={`gyt${y}`}
-          x={2}
-          y={sy - 2}
-          fontSize={9}
-          fill="oklch(0.4 0.02 220)"
-          fontFamily="monospace"
-        >
-          {y}m
-        </text>,
-      );
-    }
-  }
+
+  const svgPointsStr = points
+    .map((p) => {
+      const s = withOffset(p);
+      return `${s.x},${s.y}`;
+    })
+    .join(" ");
 
   return (
     <div
-      ref={containerRef}
       className="fixed inset-0 z-40 flex flex-col"
       style={{ backgroundColor: DARK_BG }}
     >
-      {/* Top bar */}
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <div
-        className="flex items-center justify-between px-5 h-12 shrink-0 border-b"
+        className="flex items-center justify-between px-4 h-14 shrink-0 border-b gap-3"
         style={{
           backgroundColor: "oklch(0.22 0.028 220)",
           borderColor: BORDER,
         }}
       >
-        <div className="flex items-center gap-3">
+        {/* Left: title + point count */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <Pencil className="w-4 h-4" style={{ color: ACCENT_BLUE }} />
-          <span className="text-sm font-bold text-white">
+          <span className="text-sm font-bold text-white whitespace-nowrap">
             Draw Yard Boundary
           </span>
           <span
-            className="text-xs px-2 py-0.5 rounded-full font-medium"
+            className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap"
             style={{
               backgroundColor: "oklch(0.35 0.1 240 / 0.35)",
               color: "oklch(0.7 0.1 240)",
             }}
           >
             {closed
-              ? `${points.length} points · ${Math.round(bb?.width ?? 0)}m × ${Math.round(bb?.height ?? 0)}m`
-              : `${points.length} point${points.length !== 1 ? "s" : ""} placed`}
+              ? `${points.length} pts · ${Math.round(bbWidthM)}m × ${Math.round(bbHeightM)}m`
+              : `${points.length} pt${points.length !== 1 ? "s" : ""} placed`}
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          {points.length > 0 && !closed && (
+        {/* Center: search + lock */}
+        <div className="flex items-center gap-2 flex-1 max-w-xl">
+          {/* Search */}
+          <div className="flex items-center gap-1.5 flex-1">
+            <div className="relative flex-1">
+              <Input
+                data-ocid="boundary.search_input"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                placeholder="Search location…"
+                disabled={mapLocked}
+                className="text-sm pr-3 h-8"
+                style={{
+                  backgroundColor: mapLocked
+                    ? "oklch(0.17 0.015 220)"
+                    : "white",
+                  color: mapLocked ? "oklch(0.5 0.02 220)" : "#111",
+                  borderColor: BORDER,
+                }}
+              />
+            </div>
+            <Button
+              data-ocid="boundary.search_button"
+              size="sm"
+              onClick={handleSearch}
+              disabled={mapLocked || isSearching || !searchQuery.trim()}
+              className="h-8 px-3 gap-1.5 text-xs font-semibold shrink-0"
+              style={{ backgroundColor: ACCENT_BLUE, color: "white" }}
+            >
+              <Search className="w-3.5 h-3.5" />
+              {isSearching ? "…" : "Search"}
+            </Button>
+          </div>
+
+          {/* Search error */}
+          {searchError && (
+            <span className="text-xs text-red-400 whitespace-nowrap">
+              {searchError}
+            </span>
+          )}
+
+          {/* Lock / Unlock */}
+          {!mapLocked ? (
+            <Button
+              data-ocid="boundary.lock_button"
+              size="sm"
+              onClick={lockMap}
+              className="h-8 px-3 gap-1.5 text-xs font-semibold shrink-0"
+              style={{ backgroundColor: ACCENT_BLUE, color: "white" }}
+            >
+              <Lock className="w-3.5 h-3.5" />
+              Lock Map
+            </Button>
+          ) : (
+            <div className="flex items-center gap-2 shrink-0">
+              <span
+                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-md"
+                style={{
+                  backgroundColor: "oklch(0.22 0.1 145 / 0.3)",
+                  border: "1px solid oklch(0.45 0.15 145 / 0.5)",
+                  color: "oklch(0.72 0.18 145)",
+                }}
+              >
+                <Lock className="w-3 h-3" />
+                Map Locked ✓
+              </span>
+              <button
+                type="button"
+                data-ocid="boundary.unlock_button"
+                onClick={unlockMap}
+                className="text-xs underline"
+                style={{ color: "oklch(0.6 0.06 240)" }}
+              >
+                Unlock
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Right: drawing actions + close */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {mapLocked && points.length > 0 && !closed && (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleRemoveLast}
-              className="text-xs gap-1.5"
+              className="text-xs gap-1.5 h-8"
               style={{ color: "oklch(0.6 0.03 220)" }}
             >
               <RotateCcw className="w-3 h-3" />
-              Undo Last
+              Undo
             </Button>
           )}
-          {closed && (
+          {mapLocked && closed && (
             <Button
               variant="ghost"
               size="sm"
               onClick={handleReset}
-              className="text-xs gap-1.5"
+              className="text-xs gap-1.5 h-8"
               style={{ color: "oklch(0.6 0.03 220)" }}
             >
               <RotateCcw className="w-3 h-3" />
               Redraw
             </Button>
           )}
-          {!closed && points.length >= 3 && (
+          {mapLocked && !closed && points.length >= 3 && (
             <Button
               size="sm"
               onClick={closeBoundary}
-              className="text-xs font-semibold gap-1.5"
+              className="text-xs font-semibold gap-1.5 h-8"
               style={{ backgroundColor: ACCENT_BLUE, color: "white" }}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -708,9 +863,10 @@ export function YardBoundaryDrawer({
           )}
           {closed && (
             <Button
+              data-ocid="boundary.configure_bays_button"
               size="sm"
               onClick={() => setShowBayConfig(true)}
-              className="text-xs font-semibold gap-1.5"
+              className="text-xs font-semibold gap-1.5 h-8"
               style={{
                 backgroundColor: "oklch(0.52 0.17 145)",
                 color: "white",
@@ -722,8 +878,9 @@ export function YardBoundaryDrawer({
           )}
           <button
             type="button"
+            data-ocid="boundary.close_button"
             onClick={onCancel}
-            className="ml-2 flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/10 transition-colors"
+            className="ml-1 flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/10 transition-colors"
             style={{ color: "oklch(0.55 0.03 220)" }}
           >
             <X className="w-4 h-4" />
@@ -731,54 +888,75 @@ export function YardBoundaryDrawer({
         </div>
       </div>
 
-      {/* Hint bar */}
+      {/* ── Hint bar ────────────────────────────────────────────────────── */}
       <div
-        className="px-5 py-1.5 text-xs border-b"
+        className="px-4 py-1.5 text-xs border-b flex items-center gap-2"
         style={{
           backgroundColor: "oklch(0.18 0.02 220)",
           borderColor: BORDER,
           color: "oklch(0.55 0.03 220)",
         }}
       >
+        {mapLocked ? (
+          <Lock
+            className="w-3 h-3 shrink-0"
+            style={{ color: "oklch(0.65 0.18 145)" }}
+          />
+        ) : (
+          <LockOpen
+            className="w-3 h-3 shrink-0"
+            style={{ color: ACCENT_BLUE }}
+          />
+        )}
         {hint}
       </div>
 
-      {/* Drawing canvas */}
-      <div className="flex-1 overflow-hidden relative">
+      {/* ── Map + SVG overlay ───────────────────────────────────────────── */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Leaflet map container */}
+        <div
+          ref={mapContainerRef}
+          className="absolute inset-0"
+          style={{ zIndex: 0 }}
+        />
+
+        {/* SVG drawing overlay */}
         <svg
           ref={svgRef}
-          role="img"
-          aria-label="Yard boundary drawing canvas"
-          className="w-full h-full"
+          className="absolute inset-0 w-full h-full"
           style={{
-            cursor: closed ? "default" : "crosshair",
-            userSelect: "none",
+            zIndex: 10,
+            pointerEvents: mapLocked ? "all" : "none",
+            cursor: mapLocked
+              ? svgPanRef.current
+                ? "grabbing"
+                : closed
+                  ? "default"
+                  : "crosshair"
+              : "default",
           }}
-          onMouseMove={handleMouseMove}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onDoubleClick={handleDoubleClick}
-          onWheel={handleWheel}
+          onMouseMove={handleSvgMouseMove}
+          onMouseDown={handleSvgMouseDown}
+          onMouseUp={handleSvgMouseUp}
+          onDoubleClick={handleSvgDoubleClick}
         >
-          <title>Yard boundary drawing canvas</title>
-          {/* Grid */}
-          {gridLines}
+          <title>Yard boundary drawing overlay</title>
 
           {/* Filled polygon when closed */}
           {closed && points.length >= 3 && (
             <polygon
-              points={svgPoints.join(" ")}
-              fill="oklch(0.25 0.06 145 / 0.18)"
+              points={svgPointsStr}
+              fill="oklch(0.25 0.06 145 / 0.22)"
               stroke="#22c55e"
-              strokeWidth={2}
-              strokeDasharray="8 4"
+              strokeWidth={2.5}
+              strokeDasharray="10 5"
             />
           )}
 
           {/* Polyline while drawing */}
           {!closed && points.length >= 2 && (
             <polyline
-              points={svgPoints.join(" ")}
+              points={svgPointsStr}
               fill="none"
               stroke={ACCENT_BLUE}
               strokeWidth={2}
@@ -791,13 +969,15 @@ export function YardBoundaryDrawer({
             cursor &&
             points.length >= 1 &&
             (() => {
-              const last = points[points.length - 1];
-              const lp = mToSvg(last.x, last.y);
-              const cp = mToSvg(cursor.x, cursor.y);
+              const last = withOffset(points[points.length - 1]);
+              const cp = {
+                x: cursor.x + svgOffset.x,
+                y: cursor.y + svgOffset.y,
+              };
               return (
                 <line
-                  x1={lp.x}
-                  y1={lp.y}
+                  x1={last.x}
+                  y1={last.y}
                   x2={cp.x}
                   y2={cp.y}
                   stroke={ACCENT_BLUE}
@@ -808,23 +988,21 @@ export function YardBoundaryDrawer({
               );
             })()}
 
-          {/* Closing indicator line (first point proximity) */}
+          {/* Close indicator (hover over first point) */}
           {!closed &&
             cursor &&
             points.length >= 3 &&
             (() => {
-              const first = points[0];
-              const distPx = Math.sqrt(
-                ((first.x - cursor.x) * vpScale) ** 2 +
-                  ((first.y - cursor.y) * vpScale) ** 2,
-              );
-              if (distPx < 10) {
-                const fp = mToSvg(first.x, first.y);
+              const first = withOffset(points[0]);
+              const cx = cursor.x + svgOffset.x;
+              const cy = cursor.y + svgOffset.y;
+              const dist = Math.sqrt((first.x - cx) ** 2 + (first.y - cy) ** 2);
+              if (dist < 12) {
                 return (
                   <circle
-                    cx={fp.x}
-                    cy={fp.y}
-                    r={8}
+                    cx={first.x}
+                    cy={first.y}
+                    r={10}
                     fill="none"
                     stroke="#22c55e"
                     strokeWidth={2}
@@ -837,14 +1015,14 @@ export function YardBoundaryDrawer({
 
           {/* Vertex dots */}
           {points.map((p, i) => {
-            const s = mToSvg(p.x, p.y);
+            const s = withOffset(p);
             const isFirst = i === 0;
             return (
-              <g key={`pt-${p.x}-${p.y}-${i}`}>
+              <g key={`pt-${i}-${p.x.toFixed(0)}-${p.y.toFixed(0)}`}>
                 <circle
                   cx={s.x}
                   cy={s.y}
-                  r={isFirst && !closed ? 6 : 4}
+                  r={isFirst && !closed ? 7 : 4.5}
                   fill={
                     isFirst && !closed
                       ? "#22c55e"
@@ -855,19 +1033,6 @@ export function YardBoundaryDrawer({
                   stroke="white"
                   strokeWidth={1.5}
                 />
-                {/* Coordinate label for first & last */}
-                {(i === 0 || i === points.length - 1) && (
-                  <text
-                    x={s.x + 8}
-                    y={s.y - 6}
-                    fontSize={9}
-                    fill="white"
-                    fontFamily="monospace"
-                    opacity={0.7}
-                  >
-                    {Math.round(p.x)},{Math.round(p.y)}m
-                  </text>
-                )}
               </g>
             );
           })}
@@ -876,64 +1041,78 @@ export function YardBoundaryDrawer({
           {!closed &&
             cursor &&
             (() => {
-              const s = mToSvg(cursor.x, cursor.y);
+              const s = {
+                x: cursor.x + svgOffset.x,
+                y: cursor.y + svgOffset.y,
+              };
               return (
                 <circle
                   cx={s.x}
                   cy={s.y}
-                  r={3}
+                  r={3.5}
                   fill={ACCENT_BLUE}
-                  opacity={0.7}
+                  opacity={0.8}
                 />
               );
             })()}
 
-          {/* Bounding box dimensions when closed */}
+          {/* Bounding box size label when closed */}
           {closed &&
             bb &&
             (() => {
-              const topLeft = mToSvg(bb.minX, bb.minY);
-              const bottomRight = mToSvg(bb.maxX, bb.maxY);
-              const centerX = (topLeft.x + bottomRight.x) / 2;
-              const centerY = (topLeft.y + bottomRight.y) / 2;
+              const minPt = withOffset({ x: bb.minX, y: bb.minY });
+              const maxPt = withOffset({ x: bb.maxX, y: bb.maxY });
+              const cx = (minPt.x + maxPt.x) / 2;
               return (
                 <g>
-                  {/* Width label */}
                   <text
-                    x={centerX}
-                    y={topLeft.y - 8}
-                    fontSize={11}
+                    x={cx}
+                    y={minPt.y - 10}
+                    fontSize={12}
                     fill="#22c55e"
                     fontFamily="monospace"
                     textAnchor="middle"
                     fontWeight="bold"
+                    style={{ textShadow: "0 1px 4px #000" }}
                   >
-                    {Math.round(bb.width)}m
-                  </text>
-                  {/* Height label */}
-                  <text
-                    x={bottomRight.x + 8}
-                    y={centerY}
-                    fontSize={11}
-                    fill="#22c55e"
-                    fontFamily="monospace"
-                    textAnchor="start"
-                    fontWeight="bold"
-                  >
-                    {Math.round(bb.height)}m
+                    {Math.round(bbWidthM)}m × {Math.round(bbHeightM)}m
                   </text>
                 </g>
               );
             })()}
         </svg>
 
-        {/* Instructions overlay (shown when no points yet) */}
-        {points.length === 0 && (
+        {/* Instructions overlay when unlocked */}
+        {!mapLocked && (
           <div
             className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-3 rounded-xl pointer-events-none"
             style={{
-              backgroundColor: "oklch(0.22 0.03 240 / 0.9)",
+              zIndex: 20,
+              backgroundColor: "oklch(0.15 0.03 240 / 0.92)",
               border: `1px solid ${BORDER}`,
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <Lock className="w-4 h-4 shrink-0" style={{ color: ACCENT_BLUE }} />
+            <p className="text-xs text-white">
+              Search for your location above, then click{" "}
+              <span className="font-semibold" style={{ color: ACCENT_BLUE }}>
+                Lock Map
+              </span>{" "}
+              to start drawing your casting yard boundary.
+            </p>
+          </div>
+        )}
+
+        {/* Instructions overlay when locked, no points */}
+        {mapLocked && points.length === 0 && (
+          <div
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 px-5 py-3 rounded-xl pointer-events-none"
+            style={{
+              zIndex: 20,
+              backgroundColor: "oklch(0.15 0.03 240 / 0.92)",
+              border: `1px solid ${BORDER}`,
+              backdropFilter: "blur(8px)",
             }}
           >
             <Pencil
@@ -941,32 +1120,23 @@ export function YardBoundaryDrawer({
               style={{ color: ACCENT_BLUE }}
             />
             <p className="text-xs text-white">
-              Click anywhere to place your first boundary point. Use scroll to
-              zoom, right-click drag to pan.
+              Click on the map to place boundary points. Right-click drag to
+              pan. Double-click or click the first point to close.
             </p>
           </div>
         )}
       </div>
 
       {/* Bay config modal overlay */}
-      {showBayConfig &&
-        bb &&
-        (() => {
-          const margin = 20;
-          const tPts = points.map((p) => ({
-            x: p.x - bb.minX + margin,
-            y: p.y - bb.minY + margin,
-          }));
-          return (
-            <BayConfigModal
-              onConfirm={handleBayConfigConfirm}
-              onBack={() => setShowBayConfig(false)}
-              boundingWidth={bb.width}
-              boundingHeight={bb.height}
-              translatedBoundaryPoints={tPts}
-            />
-          );
-        })()}
+      {showBayConfig && bb && (
+        <BayConfigModal
+          onConfirm={handleBayConfigConfirm}
+          onBack={() => setShowBayConfig(false)}
+          boundingWidth={bbWidthM}
+          boundingHeight={bbHeightM}
+          translatedBoundaryPoints={translatedMeterPts}
+        />
+      )}
     </div>
   );
 }
