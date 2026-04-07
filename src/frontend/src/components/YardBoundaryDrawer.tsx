@@ -598,9 +598,42 @@ export function YardBoundaryDrawer({
   }
 
   function closeBoundary() {
+    // Auto-rotate polygon so longest dimension is horizontal (for max bay length)
+    let didRotate = false;
+    setPoints((prev) => {
+      if (prev.length < 3) return prev;
+
+      // Compute bounding box
+      const xs = prev.map((p) => p.x);
+      const ys = prev.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const width = maxX - minX;
+      const height = maxY - minY;
+
+      // If height > width, rotate 90° clockwise around centroid so longest axis = horizontal
+      if (height > width) {
+        didRotate = true;
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const rotated = prev.map((p) => ({
+          x: cx + (p.y - cy),
+          y: cy - (p.x - cx),
+        }));
+        return rotated;
+      }
+      return prev;
+    });
+
     setClosed(true);
     setCursor(null);
-    setHint("Boundary defined. Configure bays to place inside it.");
+    setHint(
+      didRotate
+        ? "Boundary rotated 90° to maximize bay length. Configure bays to place inside it."
+        : "Boundary defined. Configure bays to place inside it.",
+    );
   }
 
   function handleReset() {
