@@ -76,6 +76,7 @@ export default function App() {
     width: number;
     height: number;
   } | null>(null);
+  const pendingRelayoutConfig = useRef<NewYardConfig | null>(null);
 
   const undoStack = useRef<HistorySnapshot[]>([]);
   const redoStack = useRef<HistorySnapshot[]>([]);
@@ -697,6 +698,7 @@ export default function App() {
     setBoundaryPoints(config.boundaryPoints ?? []);
     setActiveProjectId(null);
     lastPlacedRef.current = null;
+    pendingRelayoutConfig.current = config;
     undoStack.current = [];
     redoStack.current = [];
     setCanUndo(false);
@@ -753,6 +755,46 @@ export default function App() {
   const handleDrawBoundary = useCallback(() => {
     setScreen("boundaryDrawing");
   }, []);
+
+  const handleRelayout = useCallback(
+    (rotatedPoints: BoundaryPoint[]) => {
+      if (rotatedPoints.length < 3) return;
+      // Compute bounding box of rotated points to get yard dimensions
+      const xs = rotatedPoints.map((p) => p.x);
+      const ys = rotatedPoints.map((p) => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      const margin = 20;
+      const newYardLength = maxX - minX + margin * 2;
+      const newYardWidth = maxY - minY + margin * 2;
+      // Translate points to start at (margin, margin)
+      const translatedPts = rotatedPoints.map((p) => ({
+        x: p.x - minX + margin,
+        y: p.y - minY + margin,
+      }));
+      if (!pendingRelayoutConfig.current) return;
+      const config = {
+        ...pendingRelayoutConfig.current,
+        yardLength: newYardLength,
+        yardWidth: newYardWidth,
+        boundaryPoints: translatedPts,
+      };
+      setYardLength(newYardLength);
+      setYardWidth(newYardWidth);
+      setBoundaryPoints(translatedPts);
+      pushHistory();
+      const autoElements = buildAutoLayoutElements(config, spacingSettings);
+      if (autoElements.length > 0) {
+        setElements(autoElements);
+        setSelectedIds(new Set());
+        refreshUndoRedo();
+        toast.success("Layout updated for new rotation");
+      }
+    },
+    [spacingSettings, pushHistory, refreshUndoRedo],
+  );
 
   const handleGoToDashboard = useCallback(() => {
     setScreen("dashboard");
@@ -1056,6 +1098,7 @@ export default function App() {
             onDeleteTextLabel={handleDeleteTextLabel}
             onMoveStart={handleMoveStart}
             boundaryPoints={boundaryPoints}
+            onRelayout={handleRelayout}
           />
         ) : (
           <Canvas3D

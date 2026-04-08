@@ -1,0 +1,34 @@
+// Version: 1.0.0
+type Data__791452850<K, V> =
+  {var count : Nat__490723111; kvs : [var ?(K, V)]};
+type ElementStatus__26674231 = {#complete; #inProgress; #planned};
+type ElementType__439010759 = {#beam; #column; #girder; #slab; #wall};
+type Internal__8484328<K, V> =
+  {children : [var ?Node__46230540<K, V>]; data : Data__791452850<K, V>};
+type LayoutProject__57854647 =
+  {elements : [PlacedElement__164601116]; name : Text};
+type Leaf__809889148<K, V> = {data : Data__791452850<K, V>};
+type Nat__490723111 = Nat__920180692;
+type Nat__920180692 = Nat;
+type Node__46230540<K, V> =
+  {#internal : Internal__8484328<K, V>; #leaf : Leaf__809889148<K, V>};
+type PlacedElement__164601116 =
+  {
+    color : Text;
+    elementType : ElementType__439010759;
+    height : Float;
+    id : Nat;
+    name : Text;
+    rotationAngle : Float;
+    status : ElementStatus__26674231;
+    width : Float;
+    xPosition : Float;
+    yPosition : Float
+  };
+actor {
+  stable projects :
+    {
+      var root : Node__46230540<Text, LayoutProject__57854647>;
+      var size : Nat__490723111
+    }
+};

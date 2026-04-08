@@ -1,0 +1,44 @@
+type PlacedElement = 
+ record {
+   color: text;
+   elementType: ElementType;
+   height: float64;
+   id: nat;
+   name: text;
+   rotationAngle: float64;
+   status: ElementStatus;
+   width: float64;
+   xPosition: float64;
+   yPosition: float64;
+ };
+type LayoutProject = 
+ record {
+   elements: vec PlacedElement;
+   name: text;
+ };
+type ElementType = 
+ variant {
+   beam;
+   column;
+   girder;
+   slab;
+   wall;
+ };
+type ElementStatus = 
+ variant {
+   complete;
+   inProgress;
+   planned;
+ };
+service : {
+  addElementToProject: (projectName: text, element: PlacedElement) -> ();
+  createProject: (name: text) -> ();
+  deleteProject: (name: text) -> ();
+  getProject: (name: text) -> (LayoutProject) query;
+  listProjects: () -> (vec LayoutProject) query;
+  removeElementFromProject: (projectName: text, elementId: nat) -> ();
+  updateElementInProject: (projectName: text, elementId: nat, newElement:
+   PlacedElement) -> ();
+  updateFullElementList: (projectName: text, newElements:
+   vec PlacedElement) -> ();
+}

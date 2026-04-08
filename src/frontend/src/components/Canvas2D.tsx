@@ -9,6 +9,42 @@ import type {
 } from "../types/yard";
 import type { BoundaryPoint } from "../utils/autoLayout";
 
+// ── Rotation helpers ──────────────────────────────────────────────────────────
+
+function rotatePoly(pts: BoundaryPoint[], angleDeg: number): BoundaryPoint[] {
+  if (pts.length === 0 || angleDeg === 0) return pts;
+  const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+  const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+  const rad = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return pts.map((p) => ({
+    x: cx + (p.x - cx) * cos - (p.y - cy) * sin,
+    y: cy + (p.x - cx) * sin + (p.y - cy) * cos,
+  }));
+}
+
+function horizontalSpan(pts: BoundaryPoint[]): number {
+  if (pts.length === 0) return 0;
+  const xs = pts.map((p) => p.x);
+  return Math.max(...xs) - Math.min(...xs);
+}
+
+function findOptimalAngle(pts: BoundaryPoint[]): number {
+  if (pts.length < 3) return 0;
+  let bestAngle = 0;
+  let bestSpan = horizontalSpan(pts);
+  // Sample 0–179 in 1° steps
+  for (let a = 1; a < 180; a++) {
+    const span = horizontalSpan(rotatePoly(pts, a));
+    if (span > bestSpan) {
+      bestSpan = span;
+      bestAngle = a;
+    }
+  }
+  return bestAngle;
+}
+
 interface Canvas2DProps {
   elements: YardElement[];
   selectedIds: Set<bigint>;
@@ -27,6 +63,7 @@ interface Canvas2DProps {
   onDeleteTextLabel: (id: bigint) => void;
   onMoveStart: () => void;
   boundaryPoints?: BoundaryPoint[];
+  onRelayout?: (rotatedPoints: BoundaryPoint[]) => void;
 }
 
 const SCALE_PX_PER_M: Record<ScaleOption, number> = {
@@ -225,11 +262,47 @@ export function Canvas2D({
   onDeleteTextLabel,
   onMoveStart,
   boundaryPoints = [],
+  onRelayout,
 }: Canvas2DProps) {
   const pxPerM = SCALE_PX_PER_M[scale];
   const yardLengthPx = yardLength * pxPerM;
   const yardWidthPx = yardWidth * pxPerM;
   const MARGIN = 32;
+
+  // ── Boundary rotation state ────────────────────────────────────────────────
+  const [boundaryRotation, setBoundaryRotation] = useState(0);
+  const [optimalAngle, setOptimalAngle] = useState(0);
+  // Track the last boundary identity so we only recompute optimal angle when points change
+  const boundaryKeyRef = useRef<string>("");
+  const onRelayoutRef = useRef(onRelayout);
+  onRelayoutRef.current = onRelayout;
+
+  useEffect(() => {
+    if (boundaryPoints.length < 3) {
+      setBoundaryRotation(0);
+      setOptimalAngle(0);
+      boundaryKeyRef.current = "";
+      return;
+    }
+    const key = boundaryPoints
+      .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+      .join("|");
+    if (key === boundaryKeyRef.current) return;
+    boundaryKeyRef.current = key;
+    const angle = findOptimalAngle(boundaryPoints);
+    setOptimalAngle(angle);
+    setBoundaryRotation(angle);
+    // Trigger initial relayout at optimal angle
+    if (onRelayoutRef.current && angle !== 0) {
+      onRelayoutRef.current(rotatePoly(boundaryPoints, angle));
+    }
+  }, [boundaryPoints]);
+
+  // Compute displayed (rotated) boundary points
+  const displayBoundaryPoints =
+    boundaryPoints.length >= 3
+      ? rotatePoly(boundaryPoints, boundaryRotation)
+      : boundaryPoints;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -770,7 +843,7 @@ export function Canvas2D({
   return (
     <div
       ref={containerRef}
-      className={`flex-1 overflow-hidden bg-[oklch(0.98_0.004_240)] ${
+      className={`flex-1 overflow-hidden bg-[oklch(0.98_0.004_240)] relative ${
         isDragOver ? "ring-2 ring-inset ring-blue-400" : ""
       }`}
       onMouseDown={handleContainerMouseDown}
@@ -810,9 +883,9 @@ export function Canvas2D({
           {scaleMarkers}
 
           {/* Yard boundary polygon overlay */}
-          {boundaryPoints.length >= 3 &&
+          {displayBoundaryPoints.length >= 3 &&
             (() => {
-              const pts = boundaryPoints
+              const pts = displayBoundaryPoints
                 .map((p) => `${p.x * pxPerM + MARGIN},${p.y * pxPerM + MARGIN}`)
                 .join(" ");
               return (
@@ -827,9 +900,9 @@ export function Canvas2D({
                     pointerEvents="none"
                   />
                   {/* Corner dots */}
-                  {boundaryPoints.map((p, _i) => (
+                  {displayBoundaryPoints.map((p, _i) => (
                     <circle
-                      key={`bp-${p.x}-${p.y}`}
+                      key={`bp-${p.x.toFixed(1)}-${p.y.toFixed(1)}`}
                       cx={p.x * pxPerM + MARGIN}
                       cy={p.y * pxPerM + MARGIN}
                       r={3}
@@ -840,8 +913,12 @@ export function Canvas2D({
                   ))}
                   {/* "Yard Boundary" label at top-left of bounding box */}
                   {(() => {
-                    const minX = Math.min(...boundaryPoints.map((p) => p.x));
-                    const minY = Math.min(...boundaryPoints.map((p) => p.y));
+                    const minX = Math.min(
+                      ...displayBoundaryPoints.map((p) => p.x),
+                    );
+                    const minY = Math.min(
+                      ...displayBoundaryPoints.map((p) => p.y),
+                    );
                     return (
                       <text
                         x={minX * pxPerM + MARGIN + 4}
@@ -1788,6 +1865,98 @@ export function Canvas2D({
           )}
         </g>
       </svg>
+
+      {/* ── Boundary Rotation Slider ────────────────────────────────────── */}
+      {boundaryPoints.length >= 3 && (
+        <div
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2.5 rounded-xl select-none"
+          style={{
+            backgroundColor: "oklch(0.15 0.03 240 / 0.92)",
+            border: "1px solid oklch(0.35 0.06 240 / 0.6)",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+            pointerEvents: "all",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Label */}
+          <span
+            style={{
+              color: "oklch(0.65 0.08 240)",
+              fontSize: "11px",
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              fontFamily: "sans-serif",
+            }}
+          >
+            Rotate boundary to maximize bay length
+          </span>
+
+          {/* Slider */}
+          <input
+            type="range"
+            min={0}
+            max={179}
+            step={1}
+            value={boundaryRotation}
+            onChange={(e) => {
+              const angle = Number(e.target.value);
+              setBoundaryRotation(angle);
+            }}
+            onMouseUp={() => {
+              if (onRelayout) {
+                onRelayout(rotatePoly(boundaryPoints, boundaryRotation));
+              }
+            }}
+            style={{
+              width: "160px",
+              accentColor: "#22c55e",
+              cursor: "pointer",
+            }}
+            data-ocid="canvas.boundary_rotation_slider"
+          />
+
+          {/* Angle display */}
+          <span
+            style={{
+              color: "#22c55e",
+              fontSize: "12px",
+              fontWeight: 700,
+              fontFamily: "monospace",
+              minWidth: "36px",
+              textAlign: "right",
+            }}
+          >
+            {boundaryRotation}°
+          </span>
+
+          {/* Auto button */}
+          <button
+            type="button"
+            onClick={() => {
+              setBoundaryRotation(optimalAngle);
+              if (onRelayout) {
+                onRelayout(rotatePoly(boundaryPoints, optimalAngle));
+              }
+            }}
+            style={{
+              backgroundColor: "oklch(0.35 0.1 145 / 0.5)",
+              border: "1px solid oklch(0.5 0.15 145 / 0.6)",
+              color: "oklch(0.75 0.18 145)",
+              fontSize: "11px",
+              fontWeight: 700,
+              padding: "2px 10px",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontFamily: "sans-serif",
+              whiteSpace: "nowrap",
+            }}
+            data-ocid="canvas.boundary_rotation_auto"
+          >
+            Auto
+          </button>
+        </div>
+      )}
     </div>
   );
 }

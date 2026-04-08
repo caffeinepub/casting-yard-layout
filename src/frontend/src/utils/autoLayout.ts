@@ -552,14 +552,24 @@ export function buildAutoLayoutElements(
       roadCenters.sort((a, b) => a - b);
 
       for (const cx of roadCenters) {
+        // The element has rotationAngle=90, so it's rotated around its own center.
+        // width=zoneHeight (long dimension), height=ROAD_WIDTH (short dimension).
+        // After 90° rotation the element visually spans:
+        //   horizontally: cx ± ROAD_WIDTH/2  →  so xPosition = cx - zoneHeight/2
+        //   vertically:   zoneTop to zoneTop+zoneHeight  →  center at zoneTop + zoneHeight/2
+        // The unrotated rect center is at (xPosition + width/2, yPosition + height/2).
+        // We need that center at (cx, zoneTop + zoneHeight/2):
+        //   xPosition + zoneHeight/2 = cx      →  xPosition = cx - zoneHeight/2
+        //   yPosition + ROAD_WIDTH/2 = zoneTop + zoneHeight/2
+        //                            →  yPosition = zoneTop + (zoneHeight - ROAD_WIDTH) / 2
         allElements.push({
           id: makeId(),
           name: "Road-Vertical",
           elementType: "custom",
           width: zoneHeight,
           height: ROAD_WIDTH,
-          xPosition: cx - ROAD_WIDTH / 2,
-          yPosition: zoneTop,
+          xPosition: cx - zoneHeight / 2,
+          yPosition: zoneTop + (zoneHeight - ROAD_WIDTH) / 2,
           rotationAngle: 90,
           color: "#888888",
           status: "planned",
@@ -850,12 +860,35 @@ export function buildAutoLayoutElements(
           el.name === "Road-Vertical"
         ) {
           const pad = 1;
-          occupied.push({
-            x1: el.xPosition - pad,
-            y1: el.yPosition - pad,
-            x2: el.xPosition + el.width + pad,
-            y2: el.yPosition + el.height + pad,
-          });
+          if (el.name === "Road-Vertical") {
+            // Road-Vertical elements are stored with rotationAngle=90.
+            // The visual footprint (after rotation around center) swaps width/height:
+            //   visual width  = el.height (= ROAD_WIDTH)
+            //   visual height = el.width  (= zoneHeight)
+            // Element center (unrotated) = (xPosition + width/2, yPosition + height/2)
+            // After rotation the center stays the same, so:
+            //   visual left   = cx - ROAD_WIDTH/2
+            //   visual right  = cx + ROAD_WIDTH/2
+            //   visual top    = cy - zoneHeight/2  = yPosition + height/2 - width/2
+            //   visual bottom = cy + zoneHeight/2  = yPosition + height/2 + width/2
+            const elCx = el.xPosition + el.width / 2;
+            const elCy = el.yPosition + el.height / 2;
+            const visHalfW = el.height / 2; // ROAD_WIDTH/2
+            const visHalfH = el.width / 2; // zoneHeight/2
+            occupied.push({
+              x1: elCx - visHalfW - pad,
+              y1: elCy - visHalfH - pad,
+              x2: elCx + visHalfW + pad,
+              y2: elCy + visHalfH + pad,
+            });
+          } else {
+            occupied.push({
+              x1: el.xPosition - pad,
+              y1: el.yPosition - pad,
+              x2: el.xPosition + el.width + pad,
+              y2: el.yPosition + el.height + pad,
+            });
+          }
         }
       }
 
