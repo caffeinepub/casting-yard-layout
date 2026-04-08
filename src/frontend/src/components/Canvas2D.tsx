@@ -270,8 +270,9 @@ export function Canvas2D({
   const MARGIN = 32;
 
   // ── Boundary rotation state ────────────────────────────────────────────────
+  // Auto-rotation only: no manual slider. boundaryRotation stores the computed
+  // optimal angle so displayBoundaryPoints can render the rotated polygon.
   const [boundaryRotation, setBoundaryRotation] = useState(0);
-  const [optimalAngle, setOptimalAngle] = useState(0);
   // Track the last boundary identity so we only recompute optimal angle when points change
   const boundaryKeyRef = useRef<string>("");
   const onRelayoutRef = useRef(onRelayout);
@@ -280,7 +281,6 @@ export function Canvas2D({
   useEffect(() => {
     if (boundaryPoints.length < 3) {
       setBoundaryRotation(0);
-      setOptimalAngle(0);
       boundaryKeyRef.current = "";
       return;
     }
@@ -290,7 +290,6 @@ export function Canvas2D({
     if (key === boundaryKeyRef.current) return;
     boundaryKeyRef.current = key;
     const angle = findOptimalAngle(boundaryPoints);
-    setOptimalAngle(angle);
     setBoundaryRotation(angle);
     // Trigger initial relayout at optimal angle
     if (onRelayoutRef.current && angle !== 0) {
@@ -1089,22 +1088,25 @@ export function Canvas2D({
                     </>
                   ) : el.imageUrl && el.name === "Road-Vertical" ? (
                     <>
+                      {/* Road-Vertical: stored as width=zoneHeight, height=ROAD_WIDTH, rotationAngle=90.
+                          We render the rect at its stored pixel dimensions (ew × eh) with a square
+                          tile pattern (eh × eh) so it tiles along the long axis, then apply the 90°
+                          rotation so the road becomes a vertical strip. */}
                       <defs>
                         <pattern
                           id={`tile-pattern-v-${el.id}`}
                           patternUnits="userSpaceOnUse"
                           x={ex}
                           y={ey}
-                          width={ew}
-                          height={ew}
+                          width={eh}
+                          height={eh}
                         >
                           <image
                             href={el.imageUrl}
                             x={0}
                             y={0}
-                            width={ew}
-                            height={ew}
-                            transform={`rotate(90, ${ew / 2}, ${ew / 2})`}
+                            width={eh}
+                            height={eh}
                             preserveAspectRatio="xMidYMid slice"
                           />
                         </pattern>
@@ -1115,6 +1117,7 @@ export function Canvas2D({
                         width={ew}
                         height={eh}
                         fill={`url(#tile-pattern-v-${el.id})`}
+                        transform={`rotate(90, ${ex + ew / 2}, ${ey + eh / 2})`}
                         style={{ pointerEvents: "none" }}
                       />
                       {isSelected && (
@@ -1127,6 +1130,7 @@ export function Canvas2D({
                           stroke="#1E7ACB"
                           strokeWidth={2}
                           strokeDasharray="4 2"
+                          transform={`rotate(90, ${ex + ew / 2}, ${ey + eh / 2})`}
                         />
                       )}
                     </>
@@ -1866,97 +1870,7 @@ export function Canvas2D({
         </g>
       </svg>
 
-      {/* ── Boundary Rotation Slider ────────────────────────────────────── */}
-      {boundaryPoints.length >= 3 && (
-        <div
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2.5 rounded-xl select-none"
-          style={{
-            backgroundColor: "oklch(0.15 0.03 240 / 0.92)",
-            border: "1px solid oklch(0.35 0.06 240 / 0.6)",
-            backdropFilter: "blur(8px)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-            pointerEvents: "all",
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {/* Label */}
-          <span
-            style={{
-              color: "oklch(0.65 0.08 240)",
-              fontSize: "11px",
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-              fontFamily: "sans-serif",
-            }}
-          >
-            Rotate boundary to maximize bay length
-          </span>
-
-          {/* Slider */}
-          <input
-            type="range"
-            min={0}
-            max={179}
-            step={1}
-            value={boundaryRotation}
-            onChange={(e) => {
-              const angle = Number(e.target.value);
-              setBoundaryRotation(angle);
-            }}
-            onMouseUp={() => {
-              if (onRelayout) {
-                onRelayout(rotatePoly(boundaryPoints, boundaryRotation));
-              }
-            }}
-            style={{
-              width: "160px",
-              accentColor: "#22c55e",
-              cursor: "pointer",
-            }}
-            data-ocid="canvas.boundary_rotation_slider"
-          />
-
-          {/* Angle display */}
-          <span
-            style={{
-              color: "#22c55e",
-              fontSize: "12px",
-              fontWeight: 700,
-              fontFamily: "monospace",
-              minWidth: "36px",
-              textAlign: "right",
-            }}
-          >
-            {boundaryRotation}°
-          </span>
-
-          {/* Auto button */}
-          <button
-            type="button"
-            onClick={() => {
-              setBoundaryRotation(optimalAngle);
-              if (onRelayout) {
-                onRelayout(rotatePoly(boundaryPoints, optimalAngle));
-              }
-            }}
-            style={{
-              backgroundColor: "oklch(0.35 0.1 145 / 0.5)",
-              border: "1px solid oklch(0.5 0.15 145 / 0.6)",
-              color: "oklch(0.75 0.18 145)",
-              fontSize: "11px",
-              fontWeight: 700,
-              padding: "2px 10px",
-              borderRadius: "6px",
-              cursor: "pointer",
-              fontFamily: "sans-serif",
-              whiteSpace: "nowrap",
-            }}
-            data-ocid="canvas.boundary_rotation_auto"
-          >
-            Auto
-          </button>
-        </div>
-      )}
+      {/* Auto-rotation is applied silently via useEffect — no manual slider UI */}
     </div>
   );
 }
